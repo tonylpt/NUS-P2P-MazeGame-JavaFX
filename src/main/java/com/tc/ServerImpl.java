@@ -37,9 +37,11 @@ public class ServerImpl implements Server{
         
         try {
             System.out.println("======================Server Started=======================");
+            LocateRegistry.createRegistry(1234);
+
             ServerImpl obj = new ServerImpl();
             Server MazeServer = (Server) UnicastRemoteObject.exportObject(obj, 0);
-            Registry registry = LocateRegistry.getRegistry();
+            Registry registry = LocateRegistry.getRegistry(1234);
             registry.bind("MazeServer", MazeServer);
         } catch (Exception ex) {
             System.err.println("Server exception: " + ex.toString());
@@ -105,7 +107,7 @@ public class ServerImpl implements Server{
     }
     
     private void stopJoinGame(){
-        Timer timer = new Timer();
+        final Timer timer = new Timer();
         
         final TimerTask task = new TimerTask() {
 

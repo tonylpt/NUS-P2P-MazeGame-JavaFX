@@ -16,7 +16,8 @@ public class tempClient {
 
 	String host = (args.length < 1) ? null : args[0];
 	try {
-	    Registry registry = LocateRegistry.getRegistry(host);
+
+	    Registry registry = LocateRegistry.getRegistry(host, 1234);
 	    Server stub = (Server) registry.lookup("MazeServer");
 	    stub.startGame(2, 2);
             ReplyMsg replyMsg1 = stub.joinGame();
