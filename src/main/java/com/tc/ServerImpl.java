@@ -5,6 +5,7 @@
  */
 package com.tc;
 
+import com.sun.tools.doclets.formats.html.SourceToHTMLConverter;
 import com.tc.model.Player;
 import com.tc.model.Treasure;
 
@@ -15,10 +16,7 @@ import java.util.Calendar;
 import java.util.Timer;
 import java.util.TimerTask;
 
-/**
- *
- * @author chenchi
- */
+
 public class ServerImpl implements Server{
 
     private GameState gameState;
@@ -44,62 +42,21 @@ public class ServerImpl implements Server{
             ex.printStackTrace();
         }
     }
-
-//    @Override
-//    public void run() {
-//        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-//    }
-    
-    public void printGameState(GameState gameState){
-        
-        System.out.println("======================print game state========================");
-        System.out.println("Size of Grid: "+ gameState.getN());
-        System.out.println("No. of players: "+ gameState.getPlayerList().size());
-        System.out.println("No. of treasures: "+ gameState.getTreasureList().size());
-        for(Player player : gameState.getPlayerList()){
-            System.out.print("Player ID: "+player.getPlayerID());            
-            System.out.print("  cord X: "+player.getCordx());
-            System.out.print("  cord Y: "+player.getCordy());
-            System.out.println("    Player treasure Count: " + player.getTreasureCount());
-        }
-        for(Treasure treasure : gameState.getTreasureList()){
-            System.out.print("treasure ID: "+treasure.getTreasureID());            
-            System.out.print("  cord X: "+treasure.getCordx());
-            System.out.print("  cord Y: "+treasure.getCordy());
-            System.out.println("    assignedPlayerID: "+treasure.getAssignedPlayerID());
-            
-        }
-        System.out.println("==========================================================");
-    }
-    
-    private void printPlayer(){
-        
-        System.out.println("=====================print player++======================");
-        System.out.println("No. of players: "+ gameState.getPlayerList().size());
-        for(Player player : gameState.getPlayerList()){
-            System.out.print("Player ID: "+player.getPlayerID());            
-            System.out.print("  cord X: "+player.getCordx());
-            System.out.print("  cord Y: "+player.getCordy());
-            System.out.println("    Player treasure Count: " + player.getTreasureCount());
-            
-        }
-        System.out.println("==========================================================");
-    }
-    
     
     //initialize variables, reset gamestate.
     public void startGame(int N, int M){
         currentPlayerID = 0;
         
-        //create gamestate.
-        gameState = GameState.getInstance();
-        gameState.initialize(N, M);
-        this.canJoinGame = true;
+        //create gamestate if no game state (1st player).
+        if(this.gameState == null) {
+            gameState = GameState.getInstance();
+            gameState.initialize(N, M);
+            this.canJoinGame = true;
+//            this.stopJoinGame();
+        }
         
         //print
         printGameState(this.gameState);
-        
-        this.stopJoinGame();
     }
     
     private void stopJoinGame(){
@@ -138,14 +95,14 @@ public class ServerImpl implements Server{
             playerID = this.createID();
             this.gameState.addPLayer(playerID);
             replyMsg.setGameState(gameState);
-            replyMsg.setReplyCode(CODE_SUCCESS);
+            replyMsg.setReplyCode(ReplyCode.CODE_SUCCESS);
             replyMsg.setPlayerID(playerID);
 
         }
         else{
             System.out.println("Join Game failed");
             System.out.println("Game has started. No more new players");
-            replyMsg.setReplyCode(CODE_JOIN_FAILED);
+            replyMsg.setReplyCode(ReplyCode.CODE_JOIN_FAILED);
         }
         
         //print
@@ -208,20 +165,73 @@ public class ServerImpl implements Server{
         if(errorCode == 1){
             //set some message in gamestate?
             System.out.println("Error 1: Player not found");
-            replyMsg.setReplyCode(CODE_PLAYER_NOT_FOUND);
+            replyMsg.setReplyCode(ReplyCode.CODE_PLAYER_NOT_FOUND);
             
         }
             
         else if(errorCode == 2){
             System.out.println("Error 2: Illegal move");
-            replyMsg.setReplyCode(CODE_ILLEGAL_MOVE);
+            replyMsg.setReplyCode(ReplyCode.CODE_ILLEGAL_MOVE);
             replyMsg.setPlayerID(playerID);
         }
         else{
-            replyMsg.setReplyCode(CODE_SUCCESS);
+            replyMsg.setReplyCode(ReplyCode.CODE_SUCCESS);
             replyMsg.setPlayerID(playerID);
             replyMsg.setGameState(gameState);
+
         }
+        this.printGameState(this.gameState);
         return replyMsg;
     }
+
+    //new game if gamestate is null - game ends, set gamestate to null?...
+    public synchronized boolean isFirstPlayer(){
+        boolean isFirstPlayer = true;
+
+        if(this.gameState!=null){
+            isFirstPlayer = false;
+        }
+
+        return isFirstPlayer;
+    }
+
+
+
+
+    public void printGameState(GameState gameState){
+
+        System.out.println("======================print game state========================");
+        System.out.println("Size of Grid: "+ gameState.getN());
+        System.out.println("No. of players: "+ gameState.getPlayerList().size());
+        System.out.println("No. of treasures: "+ gameState.getTreasureList().size());
+        for(Player player : gameState.getPlayerList()){
+            System.out.print("Player ID: "+player.getPlayerID());
+            System.out.print("  cord X: "+player.getCordx());
+            System.out.print("  cord Y: "+player.getCordy());
+            System.out.println("    Player treasure Count: " + player.getTreasureCount());
+        }
+        for(Treasure treasure : gameState.getTreasureList()){
+            System.out.print("treasure ID: "+treasure.getTreasureID());
+            System.out.print("  cord X: "+treasure.getCordx());
+            System.out.print("  cord Y: "+treasure.getCordy());
+            System.out.println("    assignedPlayerID: "+treasure.getAssignedPlayerID());
+
+        }
+        System.out.println("==========================================================");
+    }
+
+    private void printPlayer(){
+
+        System.out.println("=====================print player++======================");
+        System.out.println("No. of players: "+ gameState.getPlayerList().size());
+        for(Player player : gameState.getPlayerList()){
+            System.out.print("Player ID: "+player.getPlayerID());
+            System.out.print("  cord X: "+player.getCordx());
+            System.out.print("  cord Y: "+player.getCordy());
+            System.out.println("    Player treasure Count: " + player.getTreasureCount());
+
+        }
+        System.out.println("==========================================================");
+    }
+
 }
