@@ -1,6 +1,8 @@
 package com.tc.p2p;
 
+import com.tc.Gamestate;
 import com.tc.ReplyCode;
+import com.tc.model.ServerConfig;
 
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
@@ -21,7 +23,7 @@ public class P2PGame {
 
     public static final String NAME_BACKUP = "UTOWN_PRIMARY_SERVER";
 
-    private RMIServer rmiServer;
+    private final RMIServer rmiServer;
 
     private GameState gameState;
 
@@ -32,7 +34,7 @@ public class P2PGame {
 
         if (primary) {
             // init the waiting / the game state
-            initialStartPrimary(this.rmiServer);
+            initialStartPrimary();
         }
 
         try {
@@ -45,11 +47,11 @@ public class P2PGame {
         initialConnectToPrimary(host, port);
     }
 
-    private void initialStartPrimary(RMIServer server) {
+    private void initialStartPrimary() {
         try {
             PrimaryServerImpl obj = new PrimaryServerImpl();
-            PrimaryServer rmiObj = (PrimaryServer) UnicastRemoteObject.exportObject(obj, server.getListenPort());
-            server.getRegistry().bind(NAME_PRIMARY, rmiObj);
+            PrimaryServer rmiObj = (PrimaryServer) UnicastRemoteObject.exportObject(obj, rmiServer.getListenPort());
+            rmiServer.getRegistry().bind(NAME_PRIMARY, rmiObj);
         } catch (Exception ex) {
             System.err.println("Unable to start the Primary Server");
             ex.printStackTrace();
@@ -70,6 +72,17 @@ public class P2PGame {
             System.err.println("Unable to connect to the Primary Server");
             e.printStackTrace();
             System.exit(0);
+        }
+    }
+
+    private void becomeBackup(RMIServer server) {
+        try {
+            BackupServerImpl obj = new BackupServerImpl();
+            BackupServer rmiObj = (BackupServer) UnicastRemoteObject.exportObject(obj, server.getListenPort());
+            server.getRegistry().bind(NAME_BACKUP, rmiObj);
+        } catch (Exception ex) {
+            System.err.println("Unable to start the Backup Server");
+            ex.printStackTrace();
         }
     }
 
@@ -120,6 +133,24 @@ public class P2PGame {
         @Override
         public void gameEnded() throws RemoteException {
 
+        }
+    }
+
+    private class BackupServerImpl implements BackupServer {
+
+        @Override
+        public void updateGameState(Gamestate gameState) throws RemoteException {
+
+        }
+
+        @Override
+        public void ping() throws RemoteException {
+
+        }
+
+        @Override
+        public ServerConfig primaryDown() throws RemoteException {
+            return null;
         }
     }
 
@@ -181,6 +212,10 @@ public class P2PGame {
             // later
         }
 
+        @Override
+        public void ping() throws RemoteException {
+        }
+
     }
 
     /**
@@ -189,9 +224,9 @@ public class P2PGame {
      */
     private static class RMIServer {
 
-        private Registry registry;
+        private final Registry registry;
 
-        private int listenPort;
+        private final int listenPort;
 
         public RMIServer(Registry registry, int listenPort) {
             this.registry = registry;
@@ -202,17 +237,10 @@ public class P2PGame {
             return registry;
         }
 
-        public void setRegistry(Registry registry) {
-            this.registry = registry;
-        }
-
         public int getListenPort() {
             return listenPort;
         }
 
-        public void setListenPort(int listenPort) {
-            this.listenPort = listenPort;
-        }
     }
 
     /**
