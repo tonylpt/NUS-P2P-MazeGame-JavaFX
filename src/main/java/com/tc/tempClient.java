@@ -34,7 +34,7 @@ public class tempClient {
 				String input = sc.nextLine();
 				char dir = input.charAt(0);
 				movReply = stub.move(playerID, dir);
-				movReply.getGameState().printGameState();
+				movReply.getGameState().printGamestate();
 				System.out.println("move reply code: " + movReply.getReplyCode());
 			}
 		}

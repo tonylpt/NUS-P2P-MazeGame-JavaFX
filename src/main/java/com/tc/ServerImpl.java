@@ -20,7 +20,7 @@ import java.util.TimerTask;
 
 public class ServerImpl implements Server{
 
-    private GameState gameState;
+    private Gamestate gameState;
     private int currentPlayerID;
     private static boolean canJoinGame;
     
@@ -49,7 +49,7 @@ public class ServerImpl implements Server{
         //create gamestate if no game state (1st player).
         if(this.gameState == null) {
             currentPlayerID = 0;
-            gameState = GameState.getInstance();
+            gameState = Gamestate.getInstance();
             gameState.initialize(N, M);
             this.canJoinGame = true;
             this.currentPlayerID = 0;
@@ -57,7 +57,7 @@ public class ServerImpl implements Server{
         }
         
         //print
-        this.gameState.printGameState();
+        this.gameState.printGamestate();
     }
     
     private void stopJoinGame(){
@@ -72,7 +72,7 @@ public class ServerImpl implements Server{
                 //print
                 timer.cancel();
                 timer.purge();
-                gameState.printGameState();
+                gameState.printGamestate();
             }
         };
         
@@ -200,7 +200,7 @@ public class ServerImpl implements Server{
             replyMsg.setGameState(gameState);
 
         }
-        this.gameState.printGameState();
+        this.gameState.printGamestate();
         return replyMsg;
     }
 

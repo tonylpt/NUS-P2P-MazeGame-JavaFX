@@ -18,14 +18,14 @@ import java.util.Random;
  *
  * @author chenchi
  */
-public class GameState implements Serializable{
-    //singleton gamestate.
+public class Gamestate implements Serializable{
+    //singleton Gamestate.
     
     
     private int N;
     private List<Player> playerList;
     private List<Treasure> treasureList; //
-    private static GameState instance = null;
+    private static Gamestate instance = null;
 
     public List<Player> getPlayerList() {
         return playerList;
@@ -51,9 +51,9 @@ public class GameState implements Serializable{
         this.N = N;
     }
     
-    public static synchronized GameState getInstance() {
+    public static synchronized Gamestate getInstance() {
       if(instance == null) {
-         instance = new GameState();
+         instance = new Gamestate();
       }
       return instance;
    }
@@ -112,7 +112,7 @@ public class GameState implements Serializable{
         this.playerList.add(newPlayer);
     }
 
-    public void printGameState(){
+    public void printGamestate(){
 
         System.out.println("======================print game state========================");
         System.out.println("Size of Grid: "+ this.getN());

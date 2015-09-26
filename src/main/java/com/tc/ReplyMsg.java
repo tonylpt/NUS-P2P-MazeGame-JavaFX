@@ -9,7 +9,7 @@ public class ReplyMsg implements Serializable {
 
     private String playerID;
 
-    private GameState gameState;
+    private Gamestate gameState;
 
     private int replyCode;
 
@@ -17,11 +17,11 @@ public class ReplyMsg implements Serializable {
 
     private ServerConfig backupServer;
 
-    public GameState getGameState() {
+    public Gamestate getGameState() {
         return gameState;
     }
 
-    public void setGameState(GameState gameState) {
+    public void setGameState(Gamestate gameState) {
         this.gameState = gameState;
     }
 
