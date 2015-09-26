@@ -20,21 +20,26 @@ public class tempClient {
 
 	    Registry registry = LocateRegistry.getRegistry(host, 8080);
 	    Server stub = (Server) registry.lookup("MazeServer");
-
+		String playerID;
 
 		stub.startGame(10, 10);
 		ReplyMsg replyMsg1 = stub.joinGame();
-		ReplyMsg movReply;
-		System.out.println("join game return id: " + replyMsg1.getPlayerID());
+		if(replyMsg1.getReplyCode() == 0) {
+			playerID = replyMsg1.getPlayerID();
+			ReplyMsg movReply;
+			System.out.println("join game return id: " + replyMsg1.getPlayerID());
 
-		Scanner sc = new Scanner(System.in);
-		while (sc.hasNext()){
-			String input = sc.nextLine();
-			String[] parts = input.split(",");
-			String playerID = parts[0];
-			char dir = parts[1].charAt(0);
-			movReply = stub.move(playerID,dir);
-			System.out.println("move reply code: " + movReply.getReplyCode());
+			Scanner sc = new Scanner(System.in);
+			while (sc.hasNext()) {
+				String input = sc.nextLine();
+				char dir = input.charAt(0);
+				movReply = stub.move(playerID, dir);
+				movReply.getGameState().printGameState();
+				System.out.println("move reply code: " + movReply.getReplyCode());
+			}
+		}
+		else{
+			System.out.println("Failed to join Game...");
 		}
 	    
 	} catch (Exception e) {

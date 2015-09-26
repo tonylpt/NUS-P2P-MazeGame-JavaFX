@@ -13,6 +13,7 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Calendar;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -20,7 +21,7 @@ import java.util.TimerTask;
 public class ServerImpl implements Server{
 
     private GameState gameState;
-    private static int currentPlayerID;
+    private int currentPlayerID;
     private static boolean canJoinGame;
     
     /**
@@ -44,19 +45,19 @@ public class ServerImpl implements Server{
     }
     
     //initialize variables, reset gamestate.
-    public void startGame(int N, int M){
-        currentPlayerID = 0;
-        
+    public synchronized void startGame(int N, int M){
         //create gamestate if no game state (1st player).
         if(this.gameState == null) {
+            currentPlayerID = 0;
             gameState = GameState.getInstance();
             gameState.initialize(N, M);
             this.canJoinGame = true;
+            this.currentPlayerID = 0;
 //            this.stopJoinGame();
         }
         
         //print
-        printGameState(this.gameState);
+        this.gameState.printGameState();
     }
     
     private void stopJoinGame(){
@@ -71,7 +72,7 @@ public class ServerImpl implements Server{
                 //print
                 timer.cancel();
                 timer.purge();
-                printGameState(gameState);
+                gameState.printGameState();
             }
         };
         
@@ -83,7 +84,7 @@ public class ServerImpl implements Server{
     
     
     
-    private static synchronized String createID(){
+    private synchronized String createID(){
             return String.valueOf(currentPlayerID++);
     }
     
@@ -97,6 +98,7 @@ public class ServerImpl implements Server{
             replyMsg.setGameState(gameState);
             replyMsg.setReplyCode(ReplyCode.CODE_SUCCESS);
             replyMsg.setPlayerID(playerID);
+//            this.canJoinGame = false;
 
         }
         else{
@@ -110,7 +112,20 @@ public class ServerImpl implements Server{
         
         return replyMsg;
     }
-    
+
+    private void getTreasures(Player player){
+        List<Treasure> treasureList = gameState.getTreasureList();
+        for(Treasure oneTreasure : treasureList){
+            if(oneTreasure.getAssignedPlayerID() == null &&
+                    oneTreasure.getCordx() == player.getCordx() &&
+                    oneTreasure.getCordy() == player.getCordy()){
+                oneTreasure.setAssignedPlayerID(player.getPlayerID());
+                player.setTreasureCount(player.getTreasureCount()+1);
+            }
+        }
+    }
+
+
     public synchronized ReplyMsg move(String playerID, char direction){
         int errorCode = 0; // 1 - player not found,  2- illegal move
         ReplyMsg replyMsg = new ReplyMsg();
@@ -128,6 +143,7 @@ public class ServerImpl implements Server{
                     }
                     else{
                         player.setCordy(player.getCordy()+1);
+                        getTreasures(player);
                     }
                     break;
                 case 'S':
@@ -136,6 +152,7 @@ public class ServerImpl implements Server{
                     }
                     else{
                         player.setCordy(player.getCordy()-1);
+                        getTreasures(player);
                     }
                     break;
                 case 'E':
@@ -144,6 +161,7 @@ public class ServerImpl implements Server{
                     }
                     else{
                         player.setCordx(player.getCordx()+1);
+                        getTreasures(player);
                     }
                     break;
                 case 'W':
@@ -152,6 +170,8 @@ public class ServerImpl implements Server{
                     }
                     else{
                         player.setCordx(player.getCordx()-1);
+                        getTreasures(player);
+
                     }
                     break;
                 case 'O': //no move
@@ -180,7 +200,7 @@ public class ServerImpl implements Server{
             replyMsg.setGameState(gameState);
 
         }
-        this.printGameState(this.gameState);
+        this.gameState.printGameState();
         return replyMsg;
     }
 
@@ -193,31 +213,6 @@ public class ServerImpl implements Server{
         }
 
         return isFirstPlayer;
-    }
-
-
-
-
-    public void printGameState(GameState gameState){
-
-        System.out.println("======================print game state========================");
-        System.out.println("Size of Grid: "+ gameState.getN());
-        System.out.println("No. of players: "+ gameState.getPlayerList().size());
-        System.out.println("No. of treasures: "+ gameState.getTreasureList().size());
-        for(Player player : gameState.getPlayerList()){
-            System.out.print("Player ID: "+player.getPlayerID());
-            System.out.print("  cord X: "+player.getCordx());
-            System.out.print("  cord Y: "+player.getCordy());
-            System.out.println("    Player treasure Count: " + player.getTreasureCount());
-        }
-        for(Treasure treasure : gameState.getTreasureList()){
-            System.out.print("treasure ID: "+treasure.getTreasureID());
-            System.out.print("  cord X: "+treasure.getCordx());
-            System.out.print("  cord Y: "+treasure.getCordy());
-            System.out.println("    assignedPlayerID: "+treasure.getAssignedPlayerID());
-
-        }
-        System.out.println("==========================================================");
     }
 
     private void printPlayer(){

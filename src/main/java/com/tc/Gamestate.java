@@ -111,4 +111,26 @@ public class GameState implements Serializable{
         
         this.playerList.add(newPlayer);
     }
+
+    public void printGameState(){
+
+        System.out.println("======================print game state========================");
+        System.out.println("Size of Grid: "+ this.getN());
+        System.out.println("No. of players: "+ this.getPlayerList().size());
+        System.out.println("No. of treasures: "+ this.getTreasureList().size());
+        for(Player player : this.getPlayerList()){
+            System.out.print("Player ID: "+player.getPlayerID());
+            System.out.print("  cord X: "+player.getCordx());
+            System.out.print("  cord Y: "+player.getCordy());
+            System.out.println("    Player treasure Count: " + player.getTreasureCount());
+        }
+        for(Treasure treasure : this.getTreasureList()){
+            System.out.print("treasure ID: "+treasure.getTreasureID());
+            System.out.print("  cord X: "+treasure.getCordx());
+            System.out.print("  cord Y: "+treasure.getCordy());
+            System.out.println("    assignedPlayerID: "+treasure.getAssignedPlayerID());
+
+        }
+        System.out.println("==========================================================");
+    }
 }
