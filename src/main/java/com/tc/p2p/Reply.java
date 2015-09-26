@@ -53,6 +53,10 @@ public interface Reply extends Serializable {
         }
     }
 
+    class GameStartReply implements Reply {
+
+    }
+
     class MoveReply implements Reply {
 
         /**

@@ -32,7 +32,6 @@ public class PrimaryServer {
     private void initGameState() {
         gameState.getServerConfig().setPrimaryServer(owner);
         gameState.setRunningState(RunningState.ACCEPTING_PLAYERS);
-        gameState.getPeerList().clear();
     }
 
     public void startInitialTimer() {
@@ -62,6 +61,17 @@ public class PrimaryServer {
             // initiate the game board + treasures + assign IDs
             // add those to the game state
             // call gameStarted() on all the peers with the game state
+
+            for (Player player : gameState.getPlayerList()) {
+                if (!player.isAlive()) {
+                    try {
+                        player.getPeer().callClientGameStarted(gameState);
+                    } catch (RemoteException e) {
+                        // peer has died
+                        player.setAlive(false);
+                    }
+                }
+            }
         }
     }
 
@@ -70,13 +80,15 @@ public class PrimaryServer {
         synchronized (gameStateLock) {
             if (gameState.getRunningState() == RunningState.ACCEPTING_PLAYERS) {
                 System.out.println("Adding player!!!");
-                gameState.getPeerList().add(peer);
-                boolean becomeBackup = gameState.getPeerList().size() == 2;
+                String playerId = getNextPlayerId();
+                Player player = new Player(playerId, 0, 0, 0, peer);
+                gameState.getPlayerList().add(player);
+                boolean becomeBackup = gameState.getPlayerList().size() == 2;
                 if (becomeBackup) {
                     gameState.getServerConfig().setBackupServer(peer);
-                    return new Reply.JoinAsBackup(getNextPlayerId(), gameState);
+                    return new Reply.JoinAsBackup(playerId, gameState);
                 } else {
-                    return new Reply.JoinSucceeded(getNextPlayerId());
+                    return new Reply.JoinSucceeded(playerId);
                 }
             } else {
                 return new Reply.JoinDeclined("No longer accepting player");
@@ -90,12 +102,19 @@ public class PrimaryServer {
             throw new Error("Backup Server is unavailable");
         }
 
+        System.out.println("Player is making a move!");
+
         try {
             backupServer.callBackupUpdate(gameState);
         } catch (RemoteException e) {
             // backup is down
+            System.out.println("Backup is down!!");
 
             // make the peer the new backup server
+
+
+            /// TODO check if peer is not the primary server!!
+
             gameState.getServerConfig().setBackupServer(peer);
             return new Reply.MoveReply(PROMOTED_TO_BACKUP, gameState);
         }

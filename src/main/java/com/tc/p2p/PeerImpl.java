@@ -1,5 +1,9 @@
 package com.tc.p2p;
 
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.rmi.AlreadyBoundException;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
@@ -86,8 +90,37 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     }
 
     @Override
-    public Reply callClientGameStarted() throws RemoteException {
-        return null;
+    public Reply callClientGameStarted(GameState gameState) throws RemoteException {
+        System.out.println("Game is started");
+
+        this.gameState = gameState;
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                JFrame jFrame = new JFrame();
+                JButton button = new JButton("MOVE");
+                button.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        try {
+                            MoveReply moveReply = (MoveReply) gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this);
+                            if(moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_BACKUP) {
+                                becomeBackup(gameState);
+                            }
+                        } catch (RemoteException e1) {
+                            JOptionPane.showMessageDialog(jFrame, "Error:" + e1.getMessage());
+                            e1.printStackTrace();
+                        }
+                    }
+                });
+                jFrame.getContentPane().add(button, BorderLayout.CENTER);
+                jFrame.setTitle("game");
+                jFrame.setSize(500, 300);
+                jFrame.setVisible(true);
+            }
+        });
+
+        return new GameStartReply();
     }
 
     @Override

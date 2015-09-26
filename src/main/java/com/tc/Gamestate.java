@@ -1,6 +1,6 @@
 package com.tc;
 
-import com.tc.model.Player;
+import com.tc.p2p.Player;
 import com.tc.model.Treasure;
 
 import java.io.Serializable;
@@ -95,7 +95,7 @@ public class Gamestate implements Serializable{
         
         cordx = rand.nextInt(N);
         cordy = rand.nextInt(N);
-        Player newPlayer = new Player(playerID,cordx,cordy,treasureCount);
+        Player newPlayer = new Player(playerID,cordx,cordy,treasureCount, null);
         
         //if the starting point has treasure, assign it;
         for (Treasure oneTreasure : this.treasureList){

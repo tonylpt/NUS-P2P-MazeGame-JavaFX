@@ -1,26 +1,34 @@
-package com.tc.model;
+package com.tc.p2p;
 
 import java.io.Serializable;
 
 public class Player implements Serializable {
 
-    public Player(String id, int cordx, int cordy, int treasureCount){
+    private String playerID;
+
+    private int cordx;
+
+    private int cordy;
+
+    private int treasureCount;
+
+    private Peer peer;
+
+    private boolean alive;
+
+    public Player(String id, int cordx, int cordy, int treasureCount, Peer peer) {
         this.playerID = id;
         this.cordx = cordx;
         this.cordy = cordy;
         this.treasureCount = treasureCount;
+        this.peer = peer;
     }
 
-    private String playerID;
-    private int cordx;
-    private int cordy;
-    private int treasureCount;
 
-    public boolean equals(Player anotherPlayer){
-        if(this.playerID.equals(anotherPlayer.playerID)){
+    public boolean equals(Player anotherPlayer) {
+        if (this.playerID.equals(anotherPlayer.playerID)) {
             return true;
-        }
-        else return false;
+        } else return false;
     }
 
     public String getPlayerID() {
@@ -55,5 +63,15 @@ public class Player implements Serializable {
         this.treasureCount = treasureCount;
     }
 
+    public Peer getPeer() {
+        return peer;
+    }
 
+    public boolean isAlive() {
+        return alive;
+    }
+
+    public void setAlive(boolean alive) {
+        this.alive = alive;
+    }
 }

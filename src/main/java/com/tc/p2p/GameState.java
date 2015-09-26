@@ -11,7 +11,7 @@ public class GameState implements Serializable {
 
     private final ServerConfig serverConfig = new ServerConfig();
 
-    private final List<Peer> peerList = new ArrayList<>();
+    private final List<Player> playerList = new ArrayList<>();
 
     private RunningState runningState = RunningState.ACCEPTING_PLAYERS;
 
@@ -27,8 +27,8 @@ public class GameState implements Serializable {
         this.runningState = runningState;
     }
 
-    public List<Peer> getPeerList() {
-        return peerList;
+    public List<Player> getPlayerList() {
+        return playerList;
     }
 
     public ServerConfig getServerConfig() {

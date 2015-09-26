@@ -5,8 +5,7 @@
  */
 package com.tc;
 
-import com.sun.tools.doclets.formats.html.SourceToHTMLConverter;
-import com.tc.model.Player;
+import com.tc.p2p.Player;
 import com.tc.model.Treasure;
 
 import java.rmi.registry.LocateRegistry;
