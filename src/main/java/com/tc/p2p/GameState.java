@@ -1,16 +1,19 @@
 package com.tc.p2p;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * @author lpthanh
  */
-public class GameState {
+public class GameState implements Serializable {
+
+    private final ServerConfig serverConfig = new ServerConfig();
+
+    private final List<Peer> peerList = new ArrayList<>();
 
     private RunningState runningState = RunningState.ACCEPTING_PLAYERS;
-
-    private List<Peer> peerList = new ArrayList<>();
 
     public GameState() {
 
@@ -28,4 +31,7 @@ public class GameState {
         return peerList;
     }
 
+    public ServerConfig getServerConfig() {
+        return serverConfig;
+    }
 }

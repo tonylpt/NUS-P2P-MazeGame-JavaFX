@@ -1,7 +1,7 @@
 
 package com.tc;
 
-import com.tc.model.ServerConfig;
+import com.tc.p2p.ServerConfig;
 
 import java.io.Serializable;
 

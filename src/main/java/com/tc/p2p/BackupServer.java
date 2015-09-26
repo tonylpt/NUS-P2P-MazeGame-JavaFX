@@ -1,23 +1,24 @@
 package com.tc.p2p;
 
-import com.tc.Gamestate;
-import com.tc.model.ServerConfig;
-
-import java.rmi.Remote;
-import java.rmi.RemoteException;
-
 /**
  * @author lpthanh
  */
-public interface BackupServer extends Remote {
+public class BackupServer {
 
-    /**
-     * Called by the primary server to the backup server to update the latest game state
-     */
-    void updateGameState(Gamestate gameState) throws RemoteException;
+    private final Peer owner;
 
-    void ping() throws RemoteException;
+    private final GameState gameState;
 
-    ServerConfig primaryDown() throws RemoteException;
+    private final Object gameStateLock = new Object();
 
+    public BackupServer(Peer owner, GameState gameState) {
+        this.owner = owner;
+        this.gameState = gameState;
+    }
+
+
+    public Reply update(GameState gameState) {
+        // deep - copy from game state
+        return null;
+    }
 }
