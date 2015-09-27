@@ -1,6 +1,7 @@
 package com.tc.p2p;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -11,7 +12,7 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
-import java.util.Random;
+import java.util.*;
 
 import static com.tc.p2p.Reply.*;
 import static com.tc.p2p.Reply.MoveReply.PromotionStatus.NONE;
@@ -27,6 +28,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     private final RMIServer rmiServer;
 
     private GameState gameState;
+
 
     /**
      * Will be null if this peer is not the primary server
@@ -83,7 +85,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
 
     @Override
     public Reply ping() throws RemoteException {
-        return new PingReply();
+        return new PingReply(this.gameState);
     }
 
     @Override
@@ -92,11 +94,45 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         return backupServer.update(gameState);
     }
 
+
+    public void startPollingTimer() {
+        final java.util.Timer timer = new java.util.Timer();
+        final TimerTask task = new TimerTask() {
+
+            @Override
+            public void run() {
+                System.out.println("poll server and update primary & backup server ");
+                PingReply pingReply;
+                //ping primary, if fails, ping backup. get latest gamestate/serverConfig
+                try{
+                    pingReply = (PingReply)gameState.getServerConfig().getPrimaryServer().ping();
+                    gameState.getServerConfig().setPrimaryServer(pingReply.getGameState().getServerConfig().getPrimaryServer());
+                    gameState.getServerConfig().setBackupServer(pingReply.getGameState().getServerConfig().getBackupServer());
+                }catch(RemoteException e){
+                    try {
+                        pingReply = (PingReply)gameState.getServerConfig().getBackupServer().ping();
+                        gameState.getServerConfig().setPrimaryServer(pingReply.getGameState().getServerConfig().getPrimaryServer());
+                        gameState.getServerConfig().setBackupServer(pingReply.getGameState().getServerConfig().getBackupServer());
+                    } catch (RemoteException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+
+            }
+        };
+
+
+        timer.schedule(task, 0, 30000);
+    }
+
     @Override
     public Reply callClientGameStarted(GameState gameState) throws RemoteException {
         System.out.println("Game is started");
 
         this.gameState = gameState;
+        //TODO: timer to update server config every 30 sec.
+        startPollingTimer();
+
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
@@ -119,9 +155,12 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
                                 moveReply = (MoveReply) gameState.getServerConfig().getBackupServer().primaryDied(PeerImpl.this);
                                 if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_PRIMARY) {
                                     becomePrimary(moveReply.getGameState());
+                                    //TODO rerun move
                                 } else {
                                     // update new primary
+                                    //TODO change to update whole gamestate.
                                     gameState.getServerConfig().setPrimaryServer(moveReply.getGameState().getServerConfig().getPrimaryServer());
+                                    //TODO rerun move?
                                     System.out.println("cannot become new primary");
                                 }
                             } catch (RemoteException e2) {

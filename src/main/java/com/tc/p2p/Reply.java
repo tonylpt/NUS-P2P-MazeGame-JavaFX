@@ -91,6 +91,14 @@ public interface Reply extends Serializable {
     }
 
     class PingReply implements Reply {
+        private GameState gameState;
 
+        public PingReply(GameState gameState) {
+            this.gameState = gameState;
+        }
+
+        public GameState getGameState() {
+            return gameState;
+        }
     }
 }

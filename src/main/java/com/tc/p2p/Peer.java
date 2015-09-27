@@ -19,7 +19,7 @@ public interface Peer extends Remote {
     Reply callPrimaryMove(Peer peer) throws RemoteException;
 
     /**
-     * Called by a peer to another peer
+     * Called by a peer to primary server.
      */
     Reply ping() throws RemoteException;
 

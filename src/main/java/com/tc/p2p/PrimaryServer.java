@@ -140,8 +140,9 @@ public class PrimaryServer {
         return new Reply.MoveReply(NONE, gameState);
     }
 
-    public void ping() throws RemoteException {
-    }
+//    public void ping() throws RemoteException {
+//        System.out.println("ping comes to server!");
+//    }
 
     private String getNextPlayerId() {
         return "Player-" + nextIds.incrementAndGet();
