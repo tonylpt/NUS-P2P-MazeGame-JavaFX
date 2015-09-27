@@ -40,7 +40,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
      */
     private BackupServer backupServer;
 
-    public PeerImpl(boolean primary, String host, int port) throws RemoteException {
+    public PeerImpl(boolean primary, String host, int port, int N, int M) throws RemoteException {
         this.rmiServer = createServer(this, primary, port);
 
         if (this.rmiServer == null) {
@@ -49,7 +49,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
 
         if (primary) {
             // init the waiting / the game state
-            initialStartPrimary();
+            initialStartPrimary(N,M);
         }
 
         // connect to the primary
@@ -126,11 +126,19 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     }
 
     @Override
-    public Reply callClientGameStarted(GameState gameState) throws RemoteException {
+    public Reply callClientGameStarted(String playerID, GameState gameState) throws RemoteException {
         System.out.println("Game is started");
 
         this.gameState = gameState;
-        //TODO: timer to update server config every 30 sec.
+        Player me = null;
+        for(Player onePlayer : gameState.getPlayerList()){
+            if(onePlayer.getPlayerID().equals(playerID)){
+                me = onePlayer;
+                break;
+            }
+        }
+        System.out.println("My playerID: " + playerID);
+        System.out.println("My Coordinate " + me.getCordx() + ":" + me.getCordy());
         startPollingTimer();
 
         SwingUtilities.invokeLater(new Runnable() {
@@ -209,8 +217,8 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     }
 
 
-    private void initialStartPrimary() {
-        this.primaryServer = new PrimaryServer(this);
+    private void initialStartPrimary(int N, int M) {
+        this.primaryServer = new PrimaryServer(this, N, M);
         this.primaryServer.startInitialTimer();
     }
 

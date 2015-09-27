@@ -26,9 +26,15 @@ public class PrimaryServer {
 
     private final Timer timer = new Timer("primary-server");
 
-    public PrimaryServer(Peer owner) {
+    private int N;
+
+    private int M;
+
+    public PrimaryServer(Peer owner, int N, int M) {
         this.owner = owner;
-        initGameState();
+        this.N = N;
+        this.M = M;
+        initGameState(); //just set server here, gamestate not initialized.
     }
 
     //for change of primary server.
@@ -69,14 +75,16 @@ public class PrimaryServer {
         synchronized (gameStateLock) {
             gameState.setRunningState(RunningState.GAME_STARTED);
 
-            // initiate the game board + treasures + assign IDs
+            // TODO initiate the game board + treasures + assign IDs
             // add those to the game state
             // call gameStarted() on all the peers with the game state
+
+            gameState.initialize(N,M);
 
             for (Player player : gameState.getPlayerList()) {
                 if (!player.isAlive()) {
                     try {
-                        player.getPeer().callClientGameStarted(gameState);
+                        player.getPeer().callClientGameStarted(player.getPlayerID(),gameState);
                     } catch (RemoteException e) {
                         // peer has died
                         player.setAlive(false);

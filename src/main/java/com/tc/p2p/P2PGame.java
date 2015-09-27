@@ -26,7 +26,7 @@ public class P2PGame {
 
         boolean isPrimary = false;
         String hostName;
-        int port;
+        int port,N=0,M=0;
 
         String[] argParts = args[0].trim().split("=");
         if (argParts.length != 2) {
@@ -48,7 +48,23 @@ public class P2PGame {
                 return;
         }
 
-        String[] hostParts = argParts[1].split(":");
+        String host = "";
+        if(isPrimary){
+            try {
+                String[] NM = argParts[1].split(",");
+                host = NM[0];
+                N = Integer.parseInt(NM[1]);
+                M = Integer.parseInt(NM[2]);
+            }catch(Exception e){
+                System.out.println("invalid input");
+            }
+        }
+        else{
+            host = argParts[1];
+        }
+
+
+        String[] hostParts = host.split(":");
         String portStr;
 
         if (hostParts.length == 1) {
@@ -75,7 +91,7 @@ public class P2PGame {
 
         try {
             // start the game
-            new com.tc.p2p.PeerImpl(isPrimary, hostName, port);
+            new com.tc.p2p.PeerImpl(isPrimary, hostName, port, N, M);
         } catch (RemoteException e) {
             System.err.println("Unable to start the game");
             e.printStackTrace();
