@@ -6,6 +6,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.rmi.AlreadyBoundException;
 import java.rmi.NotBoundException;
+import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -13,6 +14,8 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.Random;
 
 import static com.tc.p2p.Reply.*;
+import static com.tc.p2p.Reply.MoveReply.PromotionStatus.NONE;
+import static com.tc.p2p.Reply.MoveReply.PromotionStatus.PROMOTED_TO_PRIMARY;
 
 /**
  * @author lpthanh
@@ -102,14 +105,28 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
                 button.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
+                        MoveReply moveReply;
+                        System.out.println("moving");
                         try {
-                            MoveReply moveReply = (MoveReply) gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this);
-                            if(moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_BACKUP) {
-                                becomeBackup(gameState);
+                            moveReply = (MoveReply) gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this);
+                            if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_BACKUP) {
+                                becomeBackup(moveReply.getGameState());
                             }
                         } catch (RemoteException e1) {
-                            JOptionPane.showMessageDialog(jFrame, "Error:" + e1.getMessage());
-                            e1.printStackTrace();
+                            //primary down,
+                            System.out.println("Primary is down, become new primary.");
+                            try {
+                                moveReply = (MoveReply) gameState.getServerConfig().getBackupServer().primaryDied(PeerImpl.this);
+                                if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_PRIMARY) {
+                                    becomePrimary(moveReply.getGameState());
+                                } else {
+                                    // update new primary
+                                    gameState.getServerConfig().setPrimaryServer(moveReply.getGameState().getServerConfig().getPrimaryServer());
+                                    System.out.println("cannot become new primary");
+                                }
+                            } catch (RemoteException e2) {
+                                e2.printStackTrace();
+                            }
                         }
                     }
                 });
@@ -128,6 +145,31 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         return null;
     }
 
+    @Override
+    public Reply primaryDied(Peer peer) throws RemoteException{
+
+        Peer backupServer = gameState.getServerConfig().getBackupServer();
+        Peer primaryServer = gameState.getServerConfig().getPrimaryServer();
+        //ping primary to see if really died.
+        try{
+            primaryServer.ping();
+        }catch(RemoteException e){
+            //really died
+            if(peer.hashCode() == backupServer.hashCode()){
+                System.out.println("This is the backup server moving, no primary server to process...");
+                //TODO if back server moving, how? no move??
+                return new Reply.MoveReply(NONE, gameState);
+            }
+            else {
+                gameState.getServerConfig().setPrimaryServer(peer);
+                return new Reply.MoveReply(PROMOTED_TO_PRIMARY, gameState);
+            }
+        }
+        //never die
+        return new Reply.MoveReply(NONE, gameState);
+    }
+
+
     private void initialStartPrimary() {
         this.primaryServer = new PrimaryServer(this);
         this.primaryServer.startInitialTimer();
@@ -135,7 +177,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
 
     private void initialConnectToPrimary(String host, int port) {
         try {
-            System.out.printf("Connecting to Primary Server at " + host + ":" + port);
+            System.out.println("Connecting to Primary Server at " + host + ":" + port);
             Registry registry = LocateRegistry.getRegistry(host, port);
             Peer primaryServer = (Peer) registry.lookup(NAME_PEER);
             Reply reply = primaryServer.callPrimaryJoin(this);
@@ -149,7 +191,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
             } else if (reply instanceof JoinAsBackup) {
                 JoinAsBackup joinReply = (JoinAsBackup) reply;
                 System.out.println("Join success. Should become backup. Player ID = " + joinReply.getPlayerId());
-                becomeBackup(joinReply.getGameState());
+                joinAsBackup(joinReply.getGameState());
             } else {
                 throw new RuntimeException("Unrecognized response: " + reply.getClass());
             }
@@ -161,10 +203,28 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         }
     }
 
-    private void becomeBackup(GameState gameState) {
-        System.out.println("Becoming backup server");
+    private void joinAsBackup(GameState gameState) {
+        //TODO update to latest gamestate
+        System.out.println("Joining as backup server");
+        gameState.getServerConfig().setBackupServer(this);
         this.backupServer = new BackupServer(this, gameState);
+    }
 
+    private void becomeBackup(GameState gameState) {
+        //TODO update to latest gamestate
+        System.out.println("Becoming backup server");
+        gameState.getServerConfig().setBackupServer(this);
+        this.backupServer = new BackupServer(this, gameState);
+        this.gameState.getServerConfig().setBackupServer(this);
+
+    }
+
+    private void becomePrimary(GameState gameState) {
+        //TODO update to latest gamestate
+        System.out.println("Becoming primary server");
+        gameState.getServerConfig().setPrimaryServer(this);
+        this.primaryServer = new PrimaryServer(this, gameState);
+        this.gameState.getServerConfig().setPrimaryServer(this);
     }
 
     /**

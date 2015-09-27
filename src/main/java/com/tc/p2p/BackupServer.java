@@ -1,5 +1,7 @@
 package com.tc.p2p;
 
+import static com.tc.p2p.Reply.MoveReply.PromotionStatus.*;
+
 /**
  * @author lpthanh
  */
@@ -21,4 +23,6 @@ public class BackupServer {
         // deep - copy from game state
         return null;
     }
+
+
 }

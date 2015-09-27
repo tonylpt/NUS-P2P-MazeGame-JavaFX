@@ -43,4 +43,11 @@ public interface Peer extends Remote {
     Reply callClientGameEnded() throws RemoteException;
 
 
+    /**
+     * called by player to inform backup that primary server died.
+     *
+     */
+    Reply primaryDied(Peer peer) throws RemoteException;
+
+
 }

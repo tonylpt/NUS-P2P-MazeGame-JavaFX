@@ -1,5 +1,7 @@
 package com.tc.p2p;
 
+import com.tc.Gamestate;
+
 import java.rmi.RemoteException;
 import java.util.Calendar;
 import java.util.Timer;
@@ -27,6 +29,15 @@ public class PrimaryServer {
     public PrimaryServer(Peer owner) {
         this.owner = owner;
         initGameState();
+    }
+
+    //for change of primary server.
+    public PrimaryServer(Peer owner, GameState gamestate) {
+        this.owner = owner;
+        //TODO deep update gamestate to latest from backup;
+        this.gameState.getServerConfig().setPrimaryServer(gamestate.getServerConfig().getPrimaryServer());
+        this.gameState.getServerConfig().setBackupServer(gamestate.getServerConfig().getBackupServer());
+//        this.gameState = gameState;
     }
 
     private void initGameState() {
@@ -114,9 +125,16 @@ public class PrimaryServer {
 
 
             /// TODO check if peer is not the primary server!!
+            Peer primaryServer = gameState.getServerConfig().getPrimaryServer();
+            if(peer.hashCode() == primaryServer.hashCode()){
+                System.out.println("This is the primary server moving!");
+                return new Reply.MoveReply(NONE, gameState);
+            }
+            else{
+                gameState.getServerConfig().setBackupServer(peer);
+                return new Reply.MoveReply(PROMOTED_TO_BACKUP, gameState);
+            }
 
-            gameState.getServerConfig().setBackupServer(peer);
-            return new Reply.MoveReply(PROMOTED_TO_BACKUP, gameState);
         }
 
         return new Reply.MoveReply(NONE, gameState);
