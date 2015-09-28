@@ -1,13 +1,9 @@
 package com.tc.p2p;
 
 import javax.swing.*;
-import javax.swing.Timer;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.rmi.AlreadyBoundException;
 import java.rmi.NotBoundException;
-import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -78,9 +74,9 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     }
 
     @Override
-    public Reply callPrimaryMove(Peer peer) throws RemoteException {
+    public Reply callPrimaryMove(Peer peer, char direction) throws RemoteException {
         checkPrimary();
-        return primaryServer.move(peer);
+        return primaryServer.move(peer, direction);
     }
 
     @Override
@@ -142,42 +138,56 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         startPollingTimer();
 
         SwingUtilities.invokeLater(new Runnable() {
+
+            class Step {
+                public void step(char ch) {
+                    MoveReply moveReply;
+                    System.out.println("moving");
+                    try {
+                        moveReply = (MoveReply) gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this, ch);
+                        if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_BACKUP) {
+                            becomeBackup(moveReply.getGameState());
+                        }
+
+                    } catch (RemoteException e1) {
+                        //primary down,
+                        System.out.println("Primary is down, become new primary.");
+                        try {
+                            moveReply = (MoveReply) gameState.getServerConfig().getBackupServer().primaryDied(PeerImpl.this);
+                            if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_PRIMARY) {
+                                becomePrimary(moveReply.getGameState());
+                                //TODO rerun move
+                            } else {
+                                // update new primary
+                                //TODO change to update whole gamestate.
+                                gameState.getServerConfig().setPrimaryServer(moveReply.getGameState().getServerConfig().getPrimaryServer());
+                                //TODO rerun move?
+                                System.out.println("cannot become new primary");
+                            }
+                        } catch (RemoteException e2) {
+                            e2.printStackTrace();
+                        }
+                    }
+                }
+            }
+
             @Override
             public void run() {
                 JFrame jFrame = new JFrame();
-                JButton button = new JButton("MOVE");
-                button.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        MoveReply moveReply;
-                        System.out.println("moving");
-                        try {
-                            moveReply = (MoveReply) gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this);
-                            if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_BACKUP) {
-                                becomeBackup(moveReply.getGameState());
-                            }
-                        } catch (RemoteException e1) {
-                            //primary down,
-                            System.out.println("Primary is down, become new primary.");
-                            try {
-                                moveReply = (MoveReply) gameState.getServerConfig().getBackupServer().primaryDied(PeerImpl.this);
-                                if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_PRIMARY) {
-                                    becomePrimary(moveReply.getGameState());
-                                    //TODO rerun move
-                                } else {
-                                    // update new primary
-                                    //TODO change to update whole gamestate.
-                                    gameState.getServerConfig().setPrimaryServer(moveReply.getGameState().getServerConfig().getPrimaryServer());
-                                    //TODO rerun move?
-                                    System.out.println("cannot become new primary");
-                                }
-                            } catch (RemoteException e2) {
-                                e2.printStackTrace();
-                            }
-                        }
-                    }
-                });
-                jFrame.getContentPane().add(button, BorderLayout.CENTER);
+                JButton upButton = new JButton("UP");
+                JButton downButton = new JButton("DOWN");
+                JButton leftButton = new JButton("LEFT");
+                JButton rightButton = new JButton("RIGHT");
+                final Step step = new Step();
+                upButton.addActionListener(e -> step.step('N'));
+                downButton.addActionListener(e -> step.step('S'));
+                leftButton.addActionListener(e -> step.step('W'));
+                rightButton.addActionListener(e -> step.step('E'));
+
+                jFrame.getContentPane().add(upButton, BorderLayout.NORTH);
+                jFrame.getContentPane().add(downButton, BorderLayout.SOUTH);
+                jFrame.getContentPane().add(leftButton, BorderLayout.WEST);
+                jFrame.getContentPane().add(rightButton, BorderLayout.EAST);
                 jFrame.setTitle("game");
                 jFrame.setSize(500, 300);
                 jFrame.setVisible(true);

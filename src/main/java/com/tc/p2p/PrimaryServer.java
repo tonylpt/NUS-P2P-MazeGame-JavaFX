@@ -115,7 +115,7 @@ public class PrimaryServer {
         }
     }
 
-    public Reply move(Peer peer) throws RemoteException {
+    public Reply move(Peer peer, char direction) throws RemoteException {
         Peer backupServer = gameState.getServerConfig().getBackupServer();
         if (backupServer == null) {
             throw new Error("Backup Server is unavailable");

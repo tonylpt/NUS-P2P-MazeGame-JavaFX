@@ -16,7 +16,7 @@ public interface Peer extends Remote {
     /**
      * Called by the peers to the Primary server to make a game move
      */
-    Reply callPrimaryMove(Peer peer) throws RemoteException;
+    Reply callPrimaryMove(Peer peer, char direction) throws RemoteException;
 
     /**
      * Called by a peer to primary server.
