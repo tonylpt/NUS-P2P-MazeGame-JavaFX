@@ -1,5 +1,7 @@
 package com.tc.p2p;
 
+import com.sun.scenario.effect.impl.sw.sse.SSEBlend_SRC_OUTPeer;
+
 import javax.swing.*;
 import java.awt.*;
 import java.rmi.AlreadyBoundException;
@@ -11,8 +13,7 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
 
 import static com.tc.p2p.Reply.*;
-import static com.tc.p2p.Reply.MoveReply.PromotionStatus.NONE;
-import static com.tc.p2p.Reply.MoveReply.PromotionStatus.PROMOTED_TO_PRIMARY;
+import static com.tc.p2p.Reply.MoveReply.PromotionStatus.*;
 
 /**
  * @author lpthanh
@@ -74,14 +75,15 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     }
 
     @Override
-    public Reply callPrimaryMove(Peer peer, char direction) throws RemoteException {
+    public Reply callPrimaryMove(Peer peer, char direction, String playerID) throws RemoteException {
         checkPrimary();
-        return primaryServer.move(peer, direction);
+        return primaryServer.move(peer, direction, playerID);
     }
 
     @Override
-    public Reply ping() throws RemoteException {
-        return new PingReply(this.gameState);
+    public PingReply ping() throws RemoteException {
+        PingReply pingReply = null;
+        return null;
     }
 
     @Override
@@ -98,20 +100,13 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
             @Override
             public void run() {
                 System.out.println("poll server and update primary & backup server ");
-                PingReply pingReply;
                 //ping primary, if fails, ping backup. get latest gamestate/serverConfig
-                try{
-                    pingReply = (PingReply)gameState.getServerConfig().getPrimaryServer().ping();
-                    gameState.getServerConfig().setPrimaryServer(pingReply.getGameState().getServerConfig().getPrimaryServer());
-                    gameState.getServerConfig().setBackupServer(pingReply.getGameState().getServerConfig().getBackupServer());
-                }catch(RemoteException e){
-                    try {
-                        pingReply = (PingReply)gameState.getServerConfig().getBackupServer().ping();
-                        gameState.getServerConfig().setPrimaryServer(pingReply.getGameState().getServerConfig().getPrimaryServer());
-                        gameState.getServerConfig().setBackupServer(pingReply.getGameState().getServerConfig().getBackupServer());
-                    } catch (RemoteException e1) {
-                        e1.printStackTrace();
-                    }
+
+                try {
+                    PingReply reply = (PingReply) ping();
+                    gameState = reply.getGameState();
+                } catch (RemoteException e) {
+                    e.printStackTrace();
                 }
 
             }
@@ -135,7 +130,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         }
         System.out.println("My playerID: " + playerID);
         System.out.println("My Coordinate " + me.getCordx() + ":" + me.getCordy());
-        startPollingTimer();
+        //startPollingTimer();
 
         SwingUtilities.invokeLater(new Runnable() {
 
@@ -144,25 +139,33 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
                     MoveReply moveReply;
                     System.out.println("moving");
                     try {
-                        moveReply = (MoveReply) gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this, ch);
+                        moveReply = (MoveReply) PeerImpl.this.gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this, ch, playerID);
                         if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_BACKUP) {
                             becomeBackup(moveReply.getGameState());
+                        }
+                        PeerImpl.this.gameState = moveReply.getGameState();
+
+                        if (moveReply.isIllegalMove()) {
+                            System.out.println("Move is illegal");
+                        } else {
+                            PeerImpl.this.gameState.printGamestate();
                         }
 
                     } catch (RemoteException e1) {
                         //primary down,
-                        System.out.println("Primary is down, become new primary.");
+                        System.out.println("Primary is down");
                         try {
-                            moveReply = (MoveReply) gameState.getServerConfig().getBackupServer().primaryDied(PeerImpl.this);
+                            moveReply = (MoveReply) PeerImpl.this.gameState.getServerConfig().getBackupServer().primaryDied(PeerImpl.this);
                             if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_PRIMARY) {
                                 becomePrimary(moveReply.getGameState());
-                                //TODO rerun move
+                                step(ch);
+                            } else if (moveReply.getPromotionStatus() == IS_BACKUP) {
+                                System.out.println("I am Backup, no primary, no move");
+                                //no rerun step
                             } else {
                                 // update new primary
-                                //TODO change to update whole gamestate.
-                                gameState.getServerConfig().setPrimaryServer(moveReply.getGameState().getServerConfig().getPrimaryServer());
-                                //TODO rerun move?
-                                System.out.println("cannot become new primary");
+                                PeerImpl.this.gameState = moveReply.getGameState();
+                                step(ch);
                             }
                         } catch (RemoteException e2) {
                             e2.printStackTrace();
@@ -202,30 +205,12 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         return null;
     }
 
+
     @Override
-    public Reply primaryDied(Peer peer) throws RemoteException{
+    public Reply primaryDied(Peer peer) throws RemoteException {
 
-        Peer backupServer = gameState.getServerConfig().getBackupServer();
-        Peer primaryServer = gameState.getServerConfig().getPrimaryServer();
-        //ping primary to see if really died.
-        try{
-            primaryServer.ping();
-        }catch(RemoteException e){
-            //really died
-            if(peer.hashCode() == backupServer.hashCode()){
-                System.out.println("This is the backup server moving, no primary server to process...");
-                //TODO if back server moving, how? no move??
-                return new Reply.MoveReply(NONE, gameState);
-            }
-            else {
-                gameState.getServerConfig().setPrimaryServer(peer);
-                return new Reply.MoveReply(PROMOTED_TO_PRIMARY, gameState);
-            }
-        }
-        //never die
-        return new Reply.MoveReply(NONE, gameState);
+        return backupServer.primaryDied(peer);
     }
-
 
     private void initialStartPrimary(int N, int M) {
         this.primaryServer = new PrimaryServer(this, N, M);
@@ -261,27 +246,30 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     }
 
     private void joinAsBackup(GameState gameState) {
-        //TODO update to latest gamestate
         System.out.println("Joining as backup server");
         gameState.getServerConfig().setBackupServer(this);
+        this.gameState = gameState;
         this.backupServer = new BackupServer(this, gameState);
     }
 
     private void becomeBackup(GameState gameState) {
-        //TODO update to latest gamestate
         System.out.println("Becoming backup server");
-        gameState.getServerConfig().setBackupServer(this);
+//        this.gameState.getServerConfig().setBackupServer(this);
+        this.gameState = gameState;
         this.backupServer = new BackupServer(this, gameState);
-        this.gameState.getServerConfig().setBackupServer(this);
-
     }
 
     private void becomePrimary(GameState gameState) {
-        //TODO update to latest gamestate
         System.out.println("Becoming primary server");
-        gameState.getServerConfig().setPrimaryServer(this);
         this.primaryServer = new PrimaryServer(this, gameState);
+        this.gameState = gameState;
         this.gameState.getServerConfig().setPrimaryServer(this);
+        //update backup after becoming primary
+        try {
+            this.gameState.getServerConfig().getBackupServer().callBackupUpdate(this.gameState);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
     }
 
     /**

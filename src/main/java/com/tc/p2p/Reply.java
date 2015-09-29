@@ -66,6 +66,8 @@ public interface Reply extends Serializable {
 
             NONE,
 
+            IS_BACKUP,
+
             PROMOTED_TO_PRIMARY,
 
             PROMOTED_TO_BACKUP
@@ -76,9 +78,16 @@ public interface Reply extends Serializable {
 
         private GameState gameState;
 
-        public MoveReply(PromotionStatus promotionStatus, GameState gameState) {
+        private boolean illegalMove;
+
+        public MoveReply(PromotionStatus promotionStatus, GameState gameState, boolean illegalMove) {
             this.promotionStatus = promotionStatus;
             this.gameState = gameState;
+            this.illegalMove = illegalMove;
+        }
+
+        public boolean isIllegalMove() {
+            return illegalMove;
         }
 
         public PromotionStatus getPromotionStatus() {
@@ -94,6 +103,18 @@ public interface Reply extends Serializable {
         private GameState gameState;
 
         public PingReply(GameState gameState) {
+            this.gameState = gameState;
+        }
+
+        public GameState getGameState() {
+            return gameState;
+        }
+    }
+
+    class UpdateReply implements Reply {
+        private GameState gameState;
+
+        public UpdateReply(GameState gameState) {
             this.gameState = gameState;
         }
 

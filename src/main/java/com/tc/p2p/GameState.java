@@ -18,14 +18,29 @@ public class GameState implements Serializable {
 
     private final ServerConfig serverConfig = new ServerConfig();
 
-    private List<Player> playerList;
+    private List<Player> playerList = new ArrayList<>();
 
-    private List<Treasure> treasureList;
+    private List<Treasure> treasureList = new ArrayList<>();
 
     private RunningState runningState = RunningState.ACCEPTING_PLAYERS;
 
     public GameState() {
-        this.playerList = new ArrayList<>();
+    }
+
+    public int getBoardSizeN() {
+        return boardSizeN;
+    }
+
+    public void setBoardSizeN(int boardSizeN) {
+        this.boardSizeN = boardSizeN;
+    }
+
+    public int getTreasureCountM() {
+        return treasureCountM;
+    }
+
+    public void setTreasureCountM(int treasureCountM) {
+        this.treasureCountM = treasureCountM;
     }
 
     public RunningState getRunningState() {
@@ -44,9 +59,13 @@ public class GameState implements Serializable {
         return serverConfig;
     }
 
-    public synchronized void initialize(int N, int M){//start game
-        boardSizeN = N;
-        treasureCountM = M;
+    public List<Treasure> getTreasureList() {
+        return treasureList;
+    }
+
+    public synchronized void initialize(){//start game
+//        boardSizeN = N;
+//        treasureCountM = M;
         this.treasureList = new ArrayList<Treasure>();
 
         List<Coordinate> blackList = new ArrayList<Coordinate>();
@@ -54,8 +73,8 @@ public class GameState implements Serializable {
         int i,x,y;
         Coordinate coord;
         //initialize M treasures and store in treasureList
-        for(i=0; i<M; i++){
-            coord = generateCord(N);
+        for(i=0; i<treasureCountM; i++){
+            coord = generateCord(boardSizeN);
             x = coord.getX();
             y = coord.getY();
             blackList.add(coord);
@@ -65,13 +84,13 @@ public class GameState implements Serializable {
 
         //init player's position:
         for(Player onePlayer: this.playerList){
-            coord = generateCord(N);
+            coord = generateCord(boardSizeN);
             for(int j=0; j<blackList.size(); j++){
                 if(coord.getX() == blackList.get(j).getX() &&
                         coord.getY() == blackList.get(j).getY()){
                     //regen and restart if coord already exists
                     j=0;
-                    coord = generateCord(N);
+                    coord = generateCord(boardSizeN);
                 }
             }
             onePlayer.setCordx(coord.getX());
@@ -88,6 +107,27 @@ public class GameState implements Serializable {
         cord.setY(rand.nextInt(N));
 
         return cord;
+    }
+
+    public void printGamestate(){
+        System.out.println("======================print game state========================");
+        System.out.println("No. of players: "+ this.getPlayerList().size());
+        System.out.println("Primary Server: " + this.getServerConfig().getPrimaryServer());
+        System.out.println("No. of treasures: "+ this.getTreasureList().size());
+        for(Player player : this.getPlayerList()){
+            System.out.print("Player ID: "+player.getPlayerID());
+            System.out.print("  cord X: "+player.getCordx());
+            System.out.print("  cord Y: "+player.getCordy());
+            System.out.println("    Player treasure Count: " + player.getTreasureCount());
+        }
+        for(Treasure treasure : this.getTreasureList()){
+            System.out.print("treasure ID: "+treasure.getTreasureID());
+            System.out.print("  cord X: "+treasure.getCordx());
+            System.out.print("  cord Y: "+treasure.getCordy());
+            System.out.println("    assignedPlayerID: "+treasure.getAssignedPlayerID());
+
+        }
+        System.out.println("==========================================================");
     }
 }
 
