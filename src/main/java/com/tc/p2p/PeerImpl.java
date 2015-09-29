@@ -81,8 +81,19 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
     }
 
     @Override
+    public Reply callPrimaryPing() throws RemoteException {
+        checkPrimary();
+        return primaryServer.ping();
+    }
+
+    @Override
+    public Reply callBackupPing() throws RemoteException {
+        checkBackup();
+        return backupServer.ping();
+    }
+
+    @Override
     public PingReply ping() throws RemoteException {
-        PingReply pingReply = null;
         return null;
     }
 
@@ -99,14 +110,21 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
 
             @Override
             public void run() {
-                System.out.println("poll server and update primary & backup server ");
+                System.out.println("poll server and update gamestate ");
                 //ping primary, if fails, ping backup. get latest gamestate/serverConfig
 
+                PingReply reply;
                 try {
-                    PingReply reply = (PingReply) ping();
+                    reply = (PingReply) PeerImpl.this.gameState.getServerConfig().getPrimaryServer().callPrimaryPing();
                     gameState = reply.getGameState();
                 } catch (RemoteException e) {
-                    e.printStackTrace();
+                    try {
+                        reply = (PingReply) PeerImpl.this.gameState.getServerConfig().getBackupServer().callBackupPing();
+                        gameState = reply.getGameState();
+                    } catch (RemoteException e1) {
+                        //both primary & backup down, never happens..
+                        e1.printStackTrace();
+                    }
                 }
 
             }
@@ -130,7 +148,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         }
         System.out.println("My playerID: " + playerID);
         System.out.println("My Coordinate " + me.getCordx() + ":" + me.getCordy());
-        //startPollingTimer();
+        startPollingTimer();
 
         SwingUtilities.invokeLater(new Runnable() {
 
@@ -140,6 +158,14 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
                     System.out.println("moving");
                     try {
                         moveReply = (MoveReply) PeerImpl.this.gameState.getServerConfig().getPrimaryServer().callPrimaryMove(PeerImpl.this, ch, playerID);
+
+                        //if game ended, print gamestate, return.
+                        if (moveReply.getGameState().getRunningState().equals(RunningState.GAME_ENDED)) {
+                            System.out.println("Game has ended!!");
+                            moveReply.getGameState().printGamestate();
+                            return;
+                        }
+
                         if (moveReply.getPromotionStatus() == MoveReply.PromotionStatus.PROMOTED_TO_BACKUP) {
                             becomeBackup(moveReply.getGameState());
                         }
@@ -198,11 +224,6 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         });
 
         return new GameStartReply();
-    }
-
-    @Override
-    public Reply callClientGameEnded() throws RemoteException {
-        return null;
     }
 
 

@@ -140,6 +140,19 @@ public class PrimaryServer {
 
         System.out.println("Player is making a move!");
 
+
+        boolean gameEnded = true;
+        for(Treasure oneTreasure : gameState.getTreasureList()){
+            if(oneTreasure.getAssignedPlayerID() == null){
+                gameEnded = false;
+            }
+        }
+        if(gameEnded){
+            gameState.setRunningState(RunningState.GAME_ENDED);
+            return new Reply.MoveReply(NONE, gameState, illegalMove);
+        }
+
+
         Player player = null;
         for(Player onePlayer : gameState.getPlayerList()){
             if(playerID.equals(onePlayer.getPlayerID())){
@@ -156,8 +169,16 @@ public class PrimaryServer {
                 case 'N':
                     if(player.getCordy()+1 >= gameState.getBoardSizeN()){//check for illegal move
                         illegalMove = true;
+                        break;
                     }
-                    else{
+                    for(Player onePlayer : gameState.getPlayerList()){
+                        if(onePlayer.getCordx() == player.getCordx() &&
+                                onePlayer.getCordy() == player.getCordy()+1){
+                            illegalMove = true;
+                            break;
+                        }
+                    }
+                    if(illegalMove == false){
                         player.setCordy(player.getCordy()+1);
                         getTreasures(player);
                     }
@@ -165,30 +186,52 @@ public class PrimaryServer {
                 case 'S':
                     if(player.getCordy()-1 < 0){//check for illegal move
                         illegalMove = true;
-
+                        break;
                     }
-                    else{
-                        player.setCordy(player.getCordy()-1);
+                    for(Player onePlayer : gameState.getPlayerList()){
+                        if(onePlayer.getCordx() == player.getCordx() &&
+                                onePlayer.getCordy() == player.getCordy()-1){
+                            illegalMove = true;
+                            break;
+                        }
+                    }
+                    if(illegalMove == false){
+                        player.setCordy(player.getCordy() - 1);
                         getTreasures(player);
                     }
                     break;
                 case 'E':
                     if(player.getCordx()+1 >= gameState.getBoardSizeN()){//check for illegal move
                         illegalMove = true;
+                        break;
                     }
-                    else{
-                        player.setCordx(player.getCordx()+1);
+                    for(Player onePlayer : gameState.getPlayerList()){
+                        if(onePlayer.getCordx() == player.getCordx()+1 &&
+                                onePlayer.getCordy() == player.getCordy()){
+                            illegalMove = true;
+                            break;
+                        }
+                    }
+                    if(illegalMove == false){
+                        player.setCordx(player.getCordx() + 1);
                         getTreasures(player);
                     }
                     break;
                 case 'W':
                     if(player.getCordx()-1 < 0){//check for illegal move
                         illegalMove = true;
+                        break;
                     }
-                    else{
-                        player.setCordx(player.getCordx()-1);
+                    for(Player onePlayer : gameState.getPlayerList()){
+                        if(onePlayer.getCordx() == player.getCordx()-1 &&
+                                onePlayer.getCordy() == player.getCordy()){
+                            illegalMove = true;
+                            break;
+                        }
+                    }
+                    if(illegalMove == false){
+                        player.setCordx(player.getCordx() - 1);
                         getTreasures(player);
-
                     }
                     break;
                 case 'O': //no move

@@ -36,11 +36,16 @@ public interface Peer extends Remote {
      */
     Reply callClientGameStarted(String playerID, GameState gameState) throws RemoteException;
 
-    /**
-     * Called by the Primary server to each peer to signal that the game
-     * has ended
+
+    /*
+     * ping primary server
      */
-    Reply callClientGameEnded() throws RemoteException;
+    public Reply callPrimaryPing() throws RemoteException;
+
+    /*
+     * ping backup server
+     */
+    public Reply callBackupPing() throws RemoteException;
 
 
     /**

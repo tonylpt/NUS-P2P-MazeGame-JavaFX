@@ -23,6 +23,7 @@ public class BackupServer {
 
     public Reply update(GameState gameState) {
         // deep - copy from game state
+        System.out.println("backup gamestate updated!");
         this.gameState = gameState;
         return new Reply.UpdateReply(this.gameState);
     }

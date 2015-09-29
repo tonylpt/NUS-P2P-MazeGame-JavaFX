@@ -27,7 +27,6 @@ public class ServerImpl implements Server{
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        // TODO code application logic here
         
         try {
             System.out.println("======================Server Started=======================");
@@ -52,7 +51,7 @@ public class ServerImpl implements Server{
             gameState.initialize(N, M);
             this.canJoinGame = true;
             this.currentPlayerID = 0;
-//            this.stopJoinGame();
+            this.stopJoinGame();
         }
         
         //print
