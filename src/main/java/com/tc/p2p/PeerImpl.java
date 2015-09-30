@@ -2,6 +2,7 @@ package com.tc.p2p;
 
 import com.sun.scenario.effect.impl.sw.sse.SSEBlend_SRC_OUTPeer;
 
+import javax.management.remote.rmi.RMIServer;
 import javax.swing.*;
 import java.awt.*;
 import java.rmi.AlreadyBoundException;
@@ -20,7 +21,7 @@ import static com.tc.p2p.Reply.MoveReply.PromotionStatus.*;
  */
 public class PeerImpl extends UnicastRemoteObject implements Peer {
 
-    public static final String NAME_PEER = "YUMMY_PEAR";
+
 
     private final RMIServer rmiServer;
 
@@ -293,72 +294,7 @@ public class PeerImpl extends UnicastRemoteObject implements Peer {
         }
     }
 
-    /**
-     * @return null if error
-     */
-    private static RMIServer createServer(Peer peer, boolean primary, int port) {
-        Registry registry = null;
-        int listenPort = 0;
 
-        if (primary) {
-            // try to create registry on the port
 
-            try {
-                listenPort = port;
-                registry = LocateRegistry.createRegistry(listenPort);
-            } catch (RemoteException e) {
-                throw new RuntimeException("Cannot create Primary peer", e);
-            }
 
-        } else {
-
-            // try to find an available port to create the registry on
-            Random randomizer = new Random();
-            boolean retry = false;
-            do {
-                try {
-                    listenPort = port + randomizer.nextInt(1000);
-                    registry = LocateRegistry.createRegistry(listenPort);
-                } catch (RemoteException e) {
-                    // the exception may have been caused by the port's unavailability
-                    retry = true;
-                }
-            } while (retry);
-        }
-
-        try {
-            registry.bind(NAME_PEER, peer);
-        } catch (RemoteException | AlreadyBoundException e) {
-            System.err.println("Unable to bind the peer");
-            e.printStackTrace();
-            return null;
-        }
-
-        return new RMIServer(registry, listenPort);
-    }
-
-    /**
-     * Every peer acts as an RMI Server. This class is to contain the port that the peer listens on,
-     * and the registry created on that port.
-     */
-    private static class RMIServer {
-
-        private final Registry registry;
-
-        private final int listenPort;
-
-        public RMIServer(Registry registry, int listenPort) {
-            this.registry = registry;
-            this.listenPort = listenPort;
-        }
-
-        public Registry getRegistry() {
-            return registry;
-        }
-
-        public int getListenPort() {
-            return listenPort;
-        }
-
-    }
 }
