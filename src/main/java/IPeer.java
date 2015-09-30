@@ -25,12 +25,17 @@ public interface IPeer extends Remote {
     /**
      * Called by the peers to the Primary server to make a game move
      */
-    IReply.MoveReply callPrimaryMove(IPeer peer, char direction, String playerId, String authCode) throws RemoteException;
+    IReply.MoveReply callPrimaryMove(IPeer peer,
+                                     Move.Direction direction,
+                                     String playerId,
+                                     String authCode) throws RemoteException;
 
     /**
      * ping primary server
      */
-    IReply.PingReply callPrimaryPing(IPeer peer, String playerId, String authCode) throws RemoteException;
+    IReply.PingReply callPrimaryPing(IPeer peer,
+                                     String playerId,
+                                     String authCode) throws RemoteException;
 
 
     /*============ BACKUP SERVER METHODS =============*/
@@ -40,16 +45,13 @@ public interface IPeer extends Remote {
      */
     void callBackupUpdate(GameState gameState, ServerSecrets serverSecrets) throws RemoteException;
 
-    /**
-     * ping backup server
-     */
-    IReply.PingReply callBackupPing() throws RemoteException;
-
 
     /**
      * called by player to inform backup that primary server died.
      */
-    IReply callBackUpOnPrimaryDied(IPeer peer, String playerId, String authCode) throws RemoteException;
+    IReply.PingReply callBackupOnPrimaryDied(IPeer peer,
+                                             String playerId,
+                                             String authCode) throws RemoteException;
 
 
 }

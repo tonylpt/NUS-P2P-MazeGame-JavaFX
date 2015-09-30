@@ -17,6 +17,8 @@ import static IReply.PingReply.PromotionStatus.*;
  */
 public class P2PGame extends UnicastRemoteObject implements IPeer {
 
+    public static final long PING_INTERVAL = 4000;
+
     public static final String NAME_PEER = "FRIENDLY_PEER";
 
     private final RMIServer rmiServer;
@@ -170,7 +172,11 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
      * Run by Primary Server
      */
     @Override
-    public IReply.MoveReply callPrimaryMove(IPeer peer, char direction, String playerId, String authCode) throws RemoteException {
+    public IReply.MoveReply callPrimaryMove(IPeer peer,
+                                            Move.Direction direction,
+                                            String playerId,
+                                            String authCode) throws RemoteException {
+
         return primaryServer.callPrimaryMove(peer, direction, playerId, authCode);
     }
 
@@ -178,7 +184,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
      * Run by Primary Server
      */
     @Override
-    public IReply.PingReply callPrimaryPing(IPeer peer, String playerId, String authCode) throws RemoteException {
+    public IReply.PingReply callPrimaryPing(IPeer peer,
+                                            String playerId,
+                                            String authCode) throws RemoteException {
+
         return primaryServer.callPrimaryPing(peer, playerId, authCode);
     }
 
@@ -186,24 +195,20 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
      * Run by Backup Server
      */
     @Override
-    public IReply callBackupUpdate(GameState gameState) throws RemoteException {
-        return null;
+    public void callBackupUpdate(GameState gameState, ServerSecrets serverSecrets) throws RemoteException {
+
+        backupServer.callBackupUpdate(gameState, serverSecrets);
     }
 
     /**
      * Run by Backup Server
      */
     @Override
-    public IReply.PingReply callBackupPing() throws RemoteException {
-        return backupServer.callBackupPing();
-    }
+    public IReply.PingReply callBackupOnPrimaryDied(IPeer peer,
+                                                    String playerId,
+                                                    String authCode) throws RemoteException {
 
-    /**
-     * Run by Backup Server
-     */
-    @Override
-    public IReply callBackupOnPrimaryDied(IPeer peer, String playerId, String authCode) throws RemoteException {
-        return null;
+        return backupServer.callBackupOnPrimaryDied(peer, playerId, authCode);
     }
 
     private class GameClient {
@@ -227,12 +232,28 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         protected final Object gameStateLock = new Object();
 
-        protected Map<String, Long> playerLastAccessMillis = new HashMap<>();
+        protected Map<IPeer, Long> peerLastAccessMillis = new HashMap<>();
 
         protected boolean promoteNewBackupServer;
 
         protected PrimaryServer() {
 
+        }
+
+        /**
+         * Check through all the peers to know if they are still alive, based on their
+         * last request's timing.
+         */
+        public void startPulseChecking() {
+            final Timer timer = new Timer();
+            final TimerTask task = new TimerTask() {
+                @Override
+                public void run() {
+                    doPulseCheck();
+                }
+            };
+
+            timer.scheduleAtFixedRate(task, 0, 10000);
         }
 
         public abstract IReply.JoinReply callPrimaryJoin(IPeer peer);
@@ -272,7 +293,11 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
             return player;
         }
 
-        public IReply.MoveReply callPrimaryMove(IPeer peer, char direction, String playerId, String authCode) {
+        public IReply.MoveReply callPrimaryMove(IPeer peer,
+                                                Move.Direction direction,
+                                                String playerId,
+                                                String authCode) {
+
             synchronized (gameStateLock) {
                 IPeer backupServer = gameState.getServerConfig().getBackupServer();
                 if (backupServer == null) {
@@ -286,7 +311,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 }
 
                 // passed all preliminary checks
-                updatePlayerAlive(player);
+                updatePeerAlive(peer);
                 logger.serverLog("Player [" + playerId + "] is making a move");
 
                 boolean gameEnded = true;
@@ -303,158 +328,38 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
 
                 // check and update game state
+                Move move = new Move(direction, playerId);
+                boolean illegalMove = gameState.processMove(move, player);
 
-                boolean illegalMove = false;
-
-                switch (direction) {
-                    case 'N': {
-                        if (player.getPosY() + 1 >= gameState.getBoardSize()) {
-                            // check for illegal move
-                            illegalMove = true;
-                            break;
+                if (!updateBackup()) {
+                    // failed to update to backup
+                    // only try to promote if peer is not the primary server
+                    if (!peer.equals(self)) {
+                        if (promotePeerAsBackupIfNeeded(peer)) {
+                            return IReply.MoveReply.createPromoteToBackup(gameState, serverSecrets, illegalMove);
                         }
-
-                        for (Player onePlayer : gameState.getPlayerList()) {
-                            if (onePlayer.getPosX() == player.getPosX() &&
-                                    onePlayer.getPosY() == player.getPosY() + 1) {
-                                // crashing
-                                illegalMove = true;
-                                break;
-                            }
-                        }
-
-                        if (!illegalMove) {
-                            player.setPosY(player.getPosY() + 1);
-                            getTreasures(player);
-                        }
-
-                        break;
                     }
-
-                    case 'S': {
-                        if (player.getPosY() - 1 < 0) {
-                            // check for illegal move
-                            illegalMove = true;
-                            break;
-                        }
-
-                        for (Player onePlayer : gameState.getPlayerList()) {
-                            if (onePlayer.getPosX() == player.getPosX() &&
-                                    onePlayer.getPosY() == player.getPosY() - 1) {
-                                // crashing
-                                illegalMove = true;
-                                break;
-                            }
-                        }
-
-                        if (!illegalMove) {
-                            player.setPosY(player.getPosY() - 1);
-                            getTreasures(player);
-                        }
-                        break;
-                    }
-
-                    case 'E': {
-                        if (player.getPosX() + 1 >= gameState.getBoardSize()) {
-                            // check for illegal move
-                            illegalMove = true;
-                            break;
-                        }
-
-                        for (Player onePlayer : gameState.getPlayerList()) {
-                            if (onePlayer.getPosX() == player.getPosX() + 1 &&
-                                    onePlayer.getPosY() == player.getPosY()) {
-                                // crashing
-                                illegalMove = true;
-                                break;
-                            }
-                        }
-
-                        if (!illegalMove) {
-                            player.setPosX(player.getPosX() + 1);
-                            getTreasures(player);
-                        }
-
-                        break;
-                    }
-
-                    case 'W': {
-                        if (player.getPosX() - 1 < 0) {//check for illegal move
-                            illegalMove = true;
-                            break;
-                        }
-                        for (Player onePlayer : gameState.getPlayerList()) {
-                            if (onePlayer.getPosX() == player.getPosX() - 1 &&
-                                    onePlayer.getPosY() == player.getPosY()) {
-                                illegalMove = true;
-                                break;
-                            }
-                        }
-                        if (!illegalMove) {
-                            player.setPosX(player.getPosX() - 1);
-                            getTreasures(player);
-                        }
-                        break;
-                    }
-
-                    case 'O':
-                        //no move
-                        break;
-
-                    default:// illegal move
-                        illegalMove = true;
-                        break;
-
-                }
-
-                try {
-                    backupServer.callBackupUpdate(gameState, serverSecrets);
-                } catch (RemoteException e) {
-                    // backup is down
-                    logger.serverLog("Backup Server is down");
-
-                    // check if peer is not the primary server!!
-                    IPeer primaryServer = gameState.getServerConfig().getPrimaryServer();
-                    if (peer.hashCode() == primaryServer.hashCode()) {
-                        logger.serverLog("Waiting for the next peer to become the new Backup");
-                        return IReply.MoveReply.createReply(gameState, illegalMove);
-                    } else {
-                        gameState.getServerConfig().setBackupServer(peer);
-                        return new IReply.MoveReply(PROMOTED_TO_BACKUP, gameState, serverSecrets, illegalMove);
-                    }
-
                 }
 
                 return IReply.MoveReply.createReply(gameState, illegalMove);
             }
         }
 
-        protected final void getTreasures(Player player) {
-            synchronized (gameStateLock) {
-                List<Treasure> treasureList = gameState.getTreasureList();
-
-                // search for the treasure
-                for (Treasure oneTreasure : treasureList) {
-                    if (oneTreasure.getAssignedPlayerId() == null &&
-                            oneTreasure.getPosX() == player.getPosX() &&
-                            oneTreasure.getPosY() == player.getPosY()) {
-                        oneTreasure.setAssignedPlayerId(player.getId());
-                        player.setTreasureCount(player.getTreasureCount() + 1);
-                        break;
-                    }
-                }
-            }
-        }
-
-        protected void updateBackup() {
+        /**
+         * @return whether backup is still up
+         */
+        protected boolean updateBackup() {
             synchronized (gameStateLock) {
                 IPeer backupServer = gameState.getServerConfig().getBackupServer();
                 try {
                     backupServer.callBackupUpdate(gameState, serverSecrets);
+                    updatePeerAlive(backupServer);
+                    return true;
                 } catch (RemoteException e) {
                     // backup died
                     logger.serverLog("Backup Server cannot be reached");
                     promoteNewBackupServer = true;
+                    return false;
                 }
             }
         }
@@ -462,8 +367,65 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         /**
          * Called when receive a request from player, so know that it's alive.
          */
-        protected void updatePlayerAlive(Player player) {
-            playerLastAccessMillis.put(player.getId(), System.currentTimeMillis());
+        protected void updatePeerAlive(IPeer peer) {
+            if (gameState.getServerConfig().getBackupServer().equals(peer)) {
+                synchronized (gameStateLock) {
+                    // double synchronized to ensure correctness and performance
+                    if (gameState.getServerConfig().getBackupServer().equals(peer)) {
+                        promoteNewBackupServer = false;
+                    }
+                }
+            }
+
+            peerLastAccessMillis.put(peer, System.currentTimeMillis());
+        }
+
+        /**
+         * Check the liveliness statuses of the peers
+         */
+        protected void doPulseCheck() {
+            gameState.getPlayerList().forEach(player -> {
+                IPeer peer = serverSecrets.getPeers().get(player.getId());
+                Long lastAccessMillis = peerLastAccessMillis.get(peer);
+                if (lastAccessMillis == null) {
+                    return;
+                }
+
+                long silentPeriod = System.currentTimeMillis() - lastAccessMillis;
+                if (silentPeriod > 2 * PING_INTERVAL) {
+                    if (peer.equals(self)) {
+                        // peer is primary server. ignoring.
+                    } else if (peer.equals(gameState.getServerConfig().getBackupServer())) {
+                        logger.serverLog("Backup Server seems dormant. Promoting a new backup.");
+                        player.setAlive(false);
+                        synchronized (gameStateLock) {
+                            promoteNewBackupServer = true;
+                        }
+                    } else {
+                        player.setAlive(false);
+                        logger.serverLog("Player [" + player.getId() + "] seems dormant.");
+                    }
+                }
+            });
+        }
+
+        /**
+         * Attempt to check and promote a peer as backup.
+         *
+         * @return true if promoted
+         */
+        protected boolean promotePeerAsBackupIfNeeded(IPeer peer) {
+            if (promoteNewBackupServer) {
+                synchronized (gameStateLock) {
+                    if (promoteNewBackupServer) {
+                        promoteNewBackupServer = false;
+                        gameState.getServerConfig().setBackupServer(peer);
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         public IReply.PingReply callPrimaryPing(IPeer peer, String playerId, String authCode) {
@@ -473,11 +435,11 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 return IReply.PingReply.createUpdate(gameState);
             }
 
-            updatePlayerAlive(player);
+            updatePeerAlive(peer);
 
-            synchronized (gameStateLock) {
-
-            }
+            boolean promoted = promotePeerAsBackupIfNeeded(peer);
+            return promoted ? IReply.PingReply.createPromoteToBackup(gameState, serverSecrets) :
+                    IReply.PingReply.createUpdate(gameState);
         }
 
 
@@ -570,7 +532,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                         }
 
                         peer.callClientGameStarted(gameState);
-                        playerLastAccessMillis.put(player.getId(), System.currentTimeMillis());
+                        updatePeerAlive(peer);
 
                     } catch (RemoteException e) {
                         // peer has died
@@ -580,10 +542,6 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 }
 
                 logger.serverLog("Finished signalling all peers");
-            }
-
-            for (Player player : gameState.getPlayerList()) {
-                playerLastAccessMillis.put(player.getId(), System.currentTimeMillis());
             }
         }
 
@@ -602,6 +560,11 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
      * another primary server has died.
      */
     private class InheritingPrimaryServer extends PrimaryServer {
+
+        public InheritingPrimaryServer(GameState gameState, ServerSecrets serverSecrets) {
+            this.gameState = gameState;
+            this.serverSecrets = serverSecrets;
+        }
 
         @Override
         public IReply.JoinReply callPrimaryJoin(IPeer peer) {
@@ -624,18 +587,25 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         }
 
         @Override
-        public IReply.MoveReply callPrimaryMove(IPeer peer, char direction, String playerId, String authCode) {
+        public IReply.MoveReply callPrimaryMove(IPeer peer,
+                                                Move.Direction direction,
+                                                String playerId,
+                                                String authCode) {
+
             throw new IllegalStateException("Invalid Method Call");
         }
 
         @Override
-        public IReply.PingReply callPrimaryPing(IPeer peer, String playerId, String authCode) {
+        public IReply.PingReply callPrimaryPing(IPeer peer,
+                                                String playerId,
+                                                String authCode) {
+
             throw new IllegalStateException("Invalid Method Call");
         }
     }
 
 
-    public class BackupServer {
+    private abstract class BackupServer {
 
         private final Peer owner;
 
@@ -683,6 +653,14 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         }
 
         public IReply.PingReply callBackupPing() {
+            return null;
+        }
+
+        public void callBackupUpdate(GameState gameState, ServerSecrets serverSecrets) {
+
+        }
+
+        public IReply.PingReply callBackupOnPrimaryDied(IPeer peer, String playerId, String authCode) {
             return null;
         }
     }

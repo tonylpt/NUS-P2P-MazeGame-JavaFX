@@ -102,6 +102,10 @@ interface IReply extends Serializable {
         public static PingReply createUpdate(GameState gameState) {
             return new PingReply(PromotionStatus.NONE, gameState, null);
         }
+
+        public static PingReply createPromoteToBackup(GameState gameState, ServerSecrets serverSecrets) {
+            return new PingReply(PromotionStatus.PROMOTED_TO_BACKUP, gameState, serverSecrets);
+        }
     }
 
     class MoveReply extends IReply.PingReply {
@@ -125,22 +129,13 @@ interface IReply extends Serializable {
             return createReply(gameState, true);
         }
 
-        public static MoveReply createReply(GameState gameState, boolean illegal) {
-            return new MoveReply(PromotionStatus.NONE, gameState, null, illegal);
+        public static MoveReply createReply(GameState gameState, boolean illegalMove) {
+            return new MoveReply(PromotionStatus.NONE, gameState, null, illegalMove);
         }
 
-    }
-
-
-    class UpdateReply implements IReply {
-        private GameState gameState;
-
-        public UpdateReply(GameState gameState) {
-            this.gameState = gameState;
-        }
-
-        public GameState getGameState() {
-            return gameState;
+        public static MoveReply createPromoteToBackup(GameState gameState, ServerSecrets serverSecrets, boolean illegalMove) {
+            return new MoveReply(PromotionStatus.PROMOTED_TO_BACKUP, gameState, serverSecrets, illegalMove);
         }
     }
+
 }

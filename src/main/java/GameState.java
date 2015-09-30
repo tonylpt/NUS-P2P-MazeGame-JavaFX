@@ -86,6 +86,137 @@ public class GameState implements Serializable {
         }
     }
 
+    /**
+     * Process the move and manipulate the game board.
+     *
+     * @return false if the move is illegal
+     */
+    public boolean processMove(Move move, Player player) {
+        if (player == null) {
+            String playerId = move.getPlayerId();
+            for (Player p : getPlayerList()) {
+                if (p.getId().equals(playerId)) {
+                    player = p;
+                }
+            }
+
+            if (player == null) {
+                // player ID not found
+                return false;
+            }
+        }
+
+        boolean illegalMove = false;
+        switch (move.getDirection()) {
+            case N: {
+                if (player.getPosY() + 1 >= getBoardSize()) {
+                    // check for illegal move
+                    illegalMove = true;
+                    break;
+                }
+
+                for (Player onePlayer : getPlayerList()) {
+                    if (onePlayer.getPosX() == player.getPosX() &&
+                            onePlayer.getPosY() == player.getPosY() + 1) {
+                        // crashing
+                        illegalMove = true;
+                        break;
+                    }
+                }
+
+                if (!illegalMove) {
+                    player.setPosY(player.getPosY() + 1);
+                    obtainTreasures(player);
+                }
+
+                break;
+            }
+
+            case S: {
+                if (player.getPosY() - 1 < 0) {
+                    // check for illegal move
+                    illegalMove = true;
+                    break;
+                }
+
+                for (Player onePlayer : getPlayerList()) {
+                    if (onePlayer.getPosX() == player.getPosX() &&
+                            onePlayer.getPosY() == player.getPosY() - 1) {
+                        // crashing
+                        illegalMove = true;
+                        break;
+                    }
+                }
+
+                if (!illegalMove) {
+                    player.setPosY(player.getPosY() - 1);
+                    obtainTreasures(player);
+                }
+                break;
+            }
+
+            case E: {
+                if (player.getPosX() + 1 >= getBoardSize()) {
+                    // check for illegal move
+                    illegalMove = true;
+                    break;
+                }
+
+                for (Player onePlayer : getPlayerList()) {
+                    if (onePlayer.getPosX() == player.getPosX() + 1 &&
+                            onePlayer.getPosY() == player.getPosY()) {
+                        // crashing
+                        illegalMove = true;
+                        break;
+                    }
+                }
+
+                if (!illegalMove) {
+                    player.setPosX(player.getPosX() + 1);
+                    obtainTreasures(player);
+                }
+
+                break;
+            }
+
+            case W: {
+                if (player.getPosX() - 1 < 0) {//check for illegal move
+                    illegalMove = true;
+                    break;
+                }
+                for (Player onePlayer : getPlayerList()) {
+                    if (onePlayer.getPosX() == player.getPosX() - 1 &&
+                            onePlayer.getPosY() == player.getPosY()) {
+                        illegalMove = true;
+                        break;
+                    }
+                }
+                if (!illegalMove) {
+                    player.setPosX(player.getPosX() - 1);
+                    obtainTreasures(player);
+                }
+                break;
+            }
+        }
+
+        return illegalMove;
+    }
+
+    private void obtainTreasures(Player player) {
+        List<Treasure> treasureList = getTreasureList();
+
+        // search for the treasure
+        for (Treasure oneTreasure : treasureList) {
+            if (oneTreasure.getAssignedPlayerId() == null &&
+                    oneTreasure.getPosX() == player.getPosX() &&
+                    oneTreasure.getPosY() == player.getPosY()) {
+                oneTreasure.setAssignedPlayerId(player.getId());
+                player.setTreasureCount(player.getTreasureCount() + 1);
+                break;
+            }
+        }
+    }
+
     private static class Coordinate {
 
         private int x;
