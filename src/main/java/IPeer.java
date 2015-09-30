@@ -51,7 +51,8 @@ public interface IPeer extends Remote {
      */
     IReply.PingReply callBackupOnPrimaryDied(IPeer peer,
                                              String playerId,
-                                             String authCode) throws RemoteException;
+                                             String authCode,
+                                             IPeer deadPrimary) throws RemoteException;
 
 
 }

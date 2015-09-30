@@ -1,5 +1,3 @@
-import com.tc.p2p.Peer;
-import com.tc.p2p.Reply;
 import javafx.application.Platform;
 
 import java.rmi.NotBoundException;
@@ -8,9 +6,9 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
-
-import static IReply.PingReply.PromotionStatus.*;
 
 /**
  * @author lpthanh
@@ -35,6 +33,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
     private BackupServer backupServer = new NilBackupServer();
 
+    private final ExecutorService exec = Executors.newCachedThreadPool();
 
     public P2PGame(GameParams params, ILogger logger, GameUI.UIController uiController) throws RemoteException {
         this.self = this;
@@ -44,6 +43,22 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         if (this.rmiServer == null) {
             throw new RuntimeException("Unable to create Peer object.");
+        }
+
+        start(params);
+    }
+
+    private void start(GameParams params) {
+        if (params instanceof GameParams.PrimaryParams) {
+            GameParams.PrimaryParams primaryParams = (GameParams.PrimaryParams) params;
+            primaryServer = new BootstrappingPrimaryServer(
+                    primaryParams.getBoardSize(), primaryParams.getTreasureCount()
+            );
+
+            exec.execute(primaryServer::start);
+        } else if (params instanceof GameParams.NonPrimaryParams) {
+            GameParams.HostPort hostPort = params.getHostPort();
+            exec.execute(() -> gameClient.connectToPrimary(hostPort.getHost(), hostPort.getPort()));
         }
     }
 
@@ -114,44 +129,6 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
     }
 
-    private void initialConnectToPrimary(String host, int port) {
-        try {
-            logger.clientLog("Connecting to Primary Server at " + host + ":" + port);
-            Registry registry = LocateRegistry.getRegistry(host, port);
-            IPeer primaryServer = (IPeer) registry.lookup(NAME_PEER);
-            IReply.JoinReply reply = primaryServer.callPrimaryJoin(this);
-
-            if (!reply.isAccepted()) {
-                logger.clientLog("Join request was rejected by Primary Server.");
-                return;
-            }
-
-            logger.clientLog("Player has joined the game, with ID=" + reply.getPlayerId());
-            if (reply.shouldBecomeBackup()) {
-                logger.clientLog("Player was promoted to be the Backup Server.");
-            }
-
-            if (reply instanceof Reply.JoinDeclined) {
-                Reply.JoinDeclined joinReply = (Reply.JoinDeclined) reply;
-                System.out.println("Join Failed. Reason: " + joinReply.reason);
-            } else if (reply instanceof Reply.JoinSucceeded) {
-                Reply.JoinSucceeded joinReply = (Reply.JoinSucceeded) reply;
-                System.out.println("Join success. Player ID = " + joinReply.getPlayerId());
-            } else if (reply instanceof Reply.JoinAsBackup) {
-                Reply.JoinAsBackup joinReply = (Reply.JoinAsBackup) reply;
-                System.out.println("Join success. Should become backup. Player ID = " + joinReply.getPlayerId());
-                joinAsBackup(joinReply.getGameState());
-            } else {
-                throw new RuntimeException("Unrecognized response: " + reply.getClass());
-            }
-
-        } catch (RemoteException | NotBoundException e) {
-            System.err.println("Unable to connect to the Primary Server");
-            e.printStackTrace();
-            System.exit(0);
-        }
-    }
-
     /**
      * Run by Client
      */
@@ -206,17 +183,128 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
     @Override
     public IReply.PingReply callBackupOnPrimaryDied(IPeer peer,
                                                     String playerId,
-                                                    String authCode) throws RemoteException {
+                                                    String authCode,
+                                                    IPeer deadPrimary) throws RemoteException {
 
-        return backupServer.callBackupOnPrimaryDied(peer, playerId, authCode);
+        return backupServer.callBackupOnPrimaryDied(peer, playerId, authCode, deadPrimary);
     }
 
     private class GameClient {
 
+        private GameState gameState;
+
+        private String playerId;
+
+        private String authCode;
+
+        public String getPlayerId() {
+            return playerId;
+        }
+
+        public void setPlayerId(String playerId) {
+            this.playerId = playerId;
+        }
+
+        public String getAuthCode() {
+            return authCode;
+        }
+
+        public void setAuthCode(String authCode) {
+            this.authCode = authCode;
+        }
+
+        private void setGameState(GameState gameState) {
+            this.gameState = gameState;
+            Platform.runLater(() -> uiController.onGameStarted(gameState));
+        }
+
         public void callClientGameStarted(GameState gameState) {
-            Platform.runLater(() -> {
-                uiController.onGameStarted(gameState);
-            });
+            setGameState(gameState);
+        }
+
+        public boolean connectToPrimary(String host, int port) {
+            try {
+                logger.clientLog("Connecting to Primary Server at " + host + ":" + port);
+
+                Registry registry = LocateRegistry.getRegistry(host, port);
+                IPeer primaryServer = (IPeer) registry.lookup(NAME_PEER);
+                IReply.JoinReply reply = primaryServer.callPrimaryJoin(self);
+
+                if (!reply.isAccepted()) {
+                    logger.clientLog("Join request was rejected by Primary Server.");
+                    return false;
+                }
+
+                this.playerId = reply.getPlayerId();
+                logger.clientLog("Player has joined the game, with ID = [" + getPlayerId() + "]");
+
+                if (reply.shouldBecomeBackup()) {
+                    logger.clientLog("Player was promoted to be the Backup Server.");
+                    backupServer = new ActiveBackupServer();
+                }
+
+                startPulseChecking();
+
+                return true;
+
+            } catch (RemoteException | NotBoundException e) {
+                e.printStackTrace();
+                logger.clientLogError("Unable to connect to primary server", e);
+                return false;
+            }
+        }
+
+        public void startPulseChecking() {
+            final Timer timer = new Timer();
+            final TimerTask task = new TimerTask() {
+                @Override
+                public void run() {
+                    doPulseCheck();
+                }
+            };
+
+            timer.scheduleAtFixedRate(task, 0, PING_INTERVAL);
+        }
+
+        private void doPulseCheck() {
+            IPeer primaryServer = gameState.getServerConfig().getPrimaryServer();
+
+            try {
+                // contact primary
+                IReply.PingReply reply = primaryServer.callPrimaryPing(self, playerId, authCode);
+                processPingReply(reply);
+
+            } catch (RemoteException e) {
+                logger.clientLog("Primary Server is down. Contacting Backup Server.");
+
+                // contact backup
+                IPeer backupServer = gameState.getServerConfig().getBackupServer();
+                try {
+                    IReply.PingReply reply = backupServer.callBackupOnPrimaryDied(self, playerId, authCode, primaryServer);
+                    processPingReply(reply);
+                } catch (RemoteException e1) {
+                    // both server is down. sos
+                    logger.clientLog("Both servers are down without alternative.");
+                }
+            }
+        }
+
+        private void processPingReply(IReply.PingReply reply) {
+            switch (reply.getPromotionStatus()) {
+                case PROMOTED_TO_PRIMARY: {
+                    primaryServer = new InheritingPrimaryServer(reply.getGameState(), reply.getServerSecrets());
+                    setGameState(reply.getGameState());
+                    break;
+                }
+                case PROMOTED_TO_BACKUP: {
+                    backupServer = new ActiveBackupServer(reply.getGameState(), reply.getServerSecrets());
+                    setGameState(reply.getGameState());
+                    break;
+                }
+                default: {
+                    setGameState(reply.getGameState());
+                }
+            }
         }
 
     }
@@ -240,6 +328,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         }
 
+        public void start() {
+
+        }
+
         /**
          * Check through all the peers to know if they are still alive, based on their
          * last request's timing.
@@ -253,7 +345,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 }
             };
 
-            timer.scheduleAtFixedRate(task, 0, 10000);
+            timer.scheduleAtFixedRate(task, 0, (int) (PING_INTERVAL * 1.5));
         }
 
         public abstract IReply.JoinReply callPrimaryJoin(IPeer peer);
@@ -262,31 +354,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
          * Obtain and verify the player object from player ID and auth code
          */
         private Player authenticatePlayer(IPeer peer, String playerId, String authCode) {
-            Player player = null;
+            Player player = gameState.searchById(playerId);
 
-            // search for player from ID
-            for (Player onePlayer : gameState.getPlayerList()) {
-                if (playerId.equals(onePlayer.getId())) {
-                    player = onePlayer;
-                    break;
-                }
-            }
-
-            if (player == null) {
+            if (player == null || !serverSecrets.auth(peer, playerId, authCode)) {
                 // not found
-                return null;
-            }
-
-            // verify auth codes
-            String correctAuthCode = serverSecrets.getAuthCodes().get(playerId);
-            if (correctAuthCode == null || !correctAuthCode.equals(authCode)) {
-                // incorrect code
-                return null;
-            }
-
-            // verify remote object
-            IPeer savedPeer = serverSecrets.getPeers().get(playerId);
-            if (savedPeer == null || peer == null || savedPeer.hashCode() != peer.hashCode()) {
                 return null;
             }
 
@@ -396,10 +467,9 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     if (peer.equals(self)) {
                         // peer is primary server. ignoring.
                     } else if (peer.equals(gameState.getServerConfig().getBackupServer())) {
-                        logger.serverLog("Backup Server seems dormant. Promoting a new backup.");
-                        player.setAlive(false);
-                        synchronized (gameStateLock) {
-                            promoteNewBackupServer = true;
+                        logger.serverLog("Backup Server seems dormant. Retrying.");
+                        if (!updateBackup()) {
+                            player.setAlive(false);
                         }
                     } else {
                         player.setAlive(false);
@@ -461,6 +531,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         public BootstrappingPrimaryServer(int boardSize, int treasureCount) {
             this.gameState = new GameState(boardSize);
             this.treasureCount = treasureCount;
+        }
+
+        public void start() {
+            startAccepting();
         }
 
         public void startAccepting() {
@@ -543,6 +617,8 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
                 logger.serverLog("Finished signalling all peers");
             }
+
+            startPulseChecking();
         }
 
         protected final String getNextPlayerId() {
@@ -564,6 +640,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         public InheritingPrimaryServer(GameState gameState, ServerSecrets serverSecrets) {
             this.gameState = gameState;
             this.serverSecrets = serverSecrets;
+        }
+
+        public void start() {
+            startPulseChecking();
         }
 
         @Override
@@ -607,62 +687,95 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
     private abstract class BackupServer {
 
-        private final Peer owner;
+        protected GameState gameState;
 
-        private GameState gameState;
+        protected ServerSecrets serverSecrets;
 
-        private final Object gameStateLock = new Object();
-
-        public BackupServer(Peer owner, GameState gameState) {
-            this.owner = owner;
-            this.gameState = gameState;
-        }
-
-
-        public Reply update(GameState gameState) {
-            // deep - copy from game state
-            System.out.println("backup gamestate updated!");
-            this.gameState = gameState;
-            return new Reply.UpdateReply(this.gameState);
-        }
-
-        public Reply primaryDied(Peer peer) throws RemoteException {
-
-            Peer backupServer = gameState.getServerConfig().getBackupServer();
-            Peer primaryServer = gameState.getServerConfig().getPrimaryServer();
-            //ping primary to see if really died.
-            try {
-                primaryServer.ping();
-            } catch (RemoteException e) {
-                //really died
-                if (peer.hashCode() == backupServer.hashCode()) {
-                    System.out.println("This is the backup server moving, no primary server to process...");
-                    //TODO if back server moving, how? no move??
-                    return new Reply.MoveReply(IS_BACKUP, gameState, false);
-                } else {
-                    this.gameState.getServerConfig().setPrimaryServer(peer);
-                    return new Reply.MoveReply(PROMOTED_TO_PRIMARY, gameState, false);
-                }
-            }
-            //never die
-            return new Reply.MoveReply(NONE, gameState, false);
-        }
-
-        public Reply ping() throws RemoteException {
-            return new Reply.PingReply(this.gameState);
-        }
-
-        public IReply.PingReply callBackupPing() {
-            return null;
-        }
+        protected final Object gameStateLock = new Object();
 
         public void callBackupUpdate(GameState gameState, ServerSecrets serverSecrets) {
-
+            logger.serverLog("Receive update from Primary Server");
+            synchronized (gameStateLock) {
+                this.gameState = gameState;
+                this.serverSecrets = serverSecrets;
+            }
         }
 
-        public IReply.PingReply callBackupOnPrimaryDied(IPeer peer, String playerId, String authCode) {
-            return null;
+        /**
+         * Obtain and verify the player object from player ID and auth code
+         */
+        protected Player authenticatePlayer(IPeer peer, String playerId, String authCode) {
+            Player player = gameState.searchById(playerId);
+
+            if (player == null || !serverSecrets.auth(peer, playerId, authCode)) {
+                // not found
+                return null;
+            }
+
+            return player;
+        }
+
+        public IReply.PingReply callBackupOnPrimaryDied(IPeer peer,
+                                                        String playerId,
+                                                        String authCode,
+                                                        IPeer deadPrimary) {
+
+            Player player = authenticatePlayer(peer, playerId, authCode);
+            if (player == null) {
+                logger.serverLog("Receive PrimaryDied notification from invalid peer, ID : " + playerId);
+                return IReply.PingReply.createUpdate(gameState);
+            }
+
+            if (deadPrimary.equals(gameState.getServerConfig().getPrimaryServer())) {
+                synchronized (gameStateLock) {
+                    IPeer primaryServer = gameState.getServerConfig().getPrimaryServer();
+                    if (deadPrimary.equals(primaryServer)) {
+                        // ping primary to see if it really died.
+                        try {
+                            primaryServer.callPrimaryPing(self, gameClient.getPlayerId(), gameClient.getAuthCode());
+                        } catch (RemoteException e) {
+                            if (!peer.equals(self)) {
+                                this.gameState.getServerConfig().setPrimaryServer(peer);
+                                return IReply.PingReply.createPromoteToPrimary(gameState, serverSecrets);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return IReply.PingReply.createUpdate(gameState);
         }
     }
 
+    /**
+     * Represents a backup server that is running
+     */
+    private class ActiveBackupServer extends BackupServer {
+
+        public ActiveBackupServer() {
+
+        }
+
+        public ActiveBackupServer(GameState gameState, ServerSecrets serverSecrets) {
+            this.gameState = gameState;
+            this.serverSecrets = serverSecrets;
+        }
+
+    }
+
+    /**
+     * Represents a backup server as a placeholder for a peer that is not functioning as a backup server
+     */
+    private class NilBackupServer extends BackupServer {
+
+        @Override
+        public void callBackupUpdate(GameState gameState, ServerSecrets serverSecrets) {
+            throw new IllegalStateException("Invalid Method Call");
+        }
+
+        @Override
+        public IReply.PingReply callBackupOnPrimaryDied(IPeer peer, String playerId, String authCode, IPeer deadPrimary) {
+            throw new IllegalStateException("Invalid Method Call");
+        }
+    }
 }

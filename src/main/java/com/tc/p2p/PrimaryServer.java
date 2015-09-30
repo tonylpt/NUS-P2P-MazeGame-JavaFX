@@ -16,7 +16,7 @@ import static com.tc.p2p.Reply.MoveReply.PromotionStatus.PROMOTED_TO_BACKUP;
 /**
  * @author lpthanh
  */
-public class PrimaryServer {
+public class Prima2ryServer {
 
     private final Peer owner;
 

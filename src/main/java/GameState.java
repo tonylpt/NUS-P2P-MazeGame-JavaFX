@@ -217,6 +217,19 @@ public class GameState implements Serializable {
         }
     }
 
+    /**
+     * Search for a player from ID
+     */
+    public Player searchById(String playerId) {
+        for (Player onePlayer : getPlayerList()) {
+            if (playerId.equals(onePlayer.getId())) {
+                return onePlayer;
+            }
+        }
+
+        return null;
+    }
+
     private static class Coordinate {
 
         private int x;

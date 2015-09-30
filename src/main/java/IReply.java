@@ -60,8 +60,6 @@ interface IReply extends Serializable {
 
             NONE,
 
-            IS_BACKUP,
-
             PROMOTED_TO_PRIMARY,
 
             PROMOTED_TO_BACKUP
@@ -105,6 +103,10 @@ interface IReply extends Serializable {
 
         public static PingReply createPromoteToBackup(GameState gameState, ServerSecrets serverSecrets) {
             return new PingReply(PromotionStatus.PROMOTED_TO_BACKUP, gameState, serverSecrets);
+        }
+
+        public static PingReply createPromoteToPrimary(GameState gameState, ServerSecrets serverSecrets) {
+            return new PingReply(PromotionStatus.PROMOTED_TO_PRIMARY, gameState, serverSecrets);
         }
     }
 

@@ -7,7 +7,7 @@ import static com.tc.p2p.Reply.MoveReply.PromotionStatus.*;
 /**
  * @author lpthanh
  */
-public class BackupServer {
+public class B2ackupServer {
 
     private final Peer owner;
 
