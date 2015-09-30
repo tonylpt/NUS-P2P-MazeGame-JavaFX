@@ -1,6 +1,6 @@
 package com.tc.p2p;
 
-import com.tc.Gamestate;
+import com.tc.RunningState;
 import com.tc.model.Treasure;
 
 import java.rmi.RemoteException;

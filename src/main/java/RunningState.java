@@ -1,5 +1,3 @@
-package com.tc.p2p;
-
 /**
  * @author lpthanh
  */

@@ -21,6 +21,6 @@ public interface ILogger {
     /**
      * Log a message relevant to the game server component.
      */
-    void serverLog(String message, Exception e);
+    void serverLogError(String message, Exception e);
 
 }

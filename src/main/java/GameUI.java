@@ -7,6 +7,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -27,6 +28,9 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.rmi.RemoteException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -42,7 +46,7 @@ public class GameUI {
     /**
      * Start the game as a primary server.
      */
-    public static void start(Stage stage, GameParams.PrimaryParams params) {
+    public static void start(Stage stage, GameParams.PrimaryParams params) throws Exception {
         GameUI game = new GameUI(params);
         game.startGame(stage);
     }
@@ -50,7 +54,7 @@ public class GameUI {
     /**
      * Start the game as a normal (non-primary) player.
      */
-    public static void start(Stage stage, GameParams.NonPrimaryParams params) {
+    public static void start(Stage stage, GameParams.NonPrimaryParams params) throws Exception {
         GameUI game = new GameUI(params);
         game.startGame(stage);
     }
@@ -61,10 +65,12 @@ public class GameUI {
 
     private final UILogger logger;
 
-    private GameUI(GameParams params) {
+    private GameUI(GameParams params) throws RemoteException {
         this.logger = new UILogger();
-        this.game = new P2PGame(params, logger);
-        this.uiController = new UIController(game);
+
+        // trying to bootstrap the game class
+        this.uiController = new UIController();
+        this.game = new P2PGame(params, logger, uiController);
         this.logger.setExtraOutput(uiController);
     }
 
@@ -80,7 +86,7 @@ public class GameUI {
     }
 
     /**
-     * Log messages into both the console and the UI
+     * Log messages into both the console and the UI.
      */
     private static class UILogger implements ILogger {
 
@@ -92,39 +98,48 @@ public class GameUI {
 
         @Override
         public void clientLog(String message) {
-
+            System.out.println("CLIENT: " + message);
+            extraOutput.clientLog(message);
         }
 
         @Override
         public void clientLogError(String message, Exception e) {
-
+            System.out.println("CLIENT: " + message);
+            e.printStackTrace();
+            extraOutput.clientLogError(message, e);
         }
 
         @Override
         public void serverLog(String message) {
-
+            System.out.println("SERVER: " + message);
+            extraOutput.serverLog(message);
         }
 
         @Override
-        public void serverLog(String message, Exception e) {
-
+        public void serverLogError(String message, Exception e) {
+            System.out.println("SERVER: " + message);
+            extraOutput.serverLogError(message, e);
         }
     }
 
     /**
      * The main game controller that coordinates the UI and logic.
      */
-    private static class UIController implements ILogger {
+    public static class UIController implements ILogger {
 
         private final GameView gameView;
 
-        private GameModel gameModel;
+        private final GameModel gameModel;
 
-        private final P2PGame game;
+        private P2PGame game;
 
-        public UIController(P2PGame game) {
-            this.game = game;
+        public UIController() {
             this.gameView = new GameView(this);
+            this.gameModel = new GameModel();
+        }
+
+        public void setGame(P2PGame game) {
+            this.game = game;
         }
 
         public Parent getRootUI() {
@@ -171,37 +186,71 @@ public class GameUI {
 
         @Override
         public void clientLog(String message) {
-
+            gameModel.clientLog.add(new LogEntryModel(message, new Date()));
         }
 
         @Override
         public void clientLogError(String message, Exception e) {
-
+            StringWriter stringWriter = new StringWriter();
+            PrintWriter printWriter = new PrintWriter(stringWriter);
+            printWriter.println(message);
+            printWriter.println("=====stack=trace======");
+            e.printStackTrace(printWriter);
+            printWriter.println("======================");
+            printWriter.close();
+            String msg = stringWriter.toString();
+            gameModel.clientLog.add(new LogEntryModel(msg, new Date()));
         }
 
         @Override
         public void serverLog(String message) {
-
+            gameModel.serverLog.add(new LogEntryModel(message, new Date()));
         }
 
         @Override
-        public void serverLog(String message, Exception e) {
+        public void serverLogError(String message, Exception e) {
+            StringWriter stringWriter = new StringWriter();
+            PrintWriter printWriter = new PrintWriter(stringWriter);
+            printWriter.println(message);
+            printWriter.println("=====stack=trace======");
+            e.printStackTrace(printWriter);
+            printWriter.println("======================");
+            printWriter.close();
+            String msg = stringWriter.toString();
+            gameModel.serverLog.add(new LogEntryModel(msg, new Date()));
+        }
+
+        public void onGameStarted(GameState gameState) {
+            int boardSize = gameState.getBoardSize();
+            List<Player> playerList = gameState.getPlayerList();
 
         }
     }
 
     /**
      * Represents the game model.
+     * Encapsulates all the global variables needed for the game and UI.
      */
     private static class GameModel {
 
+        public final ObservableList<LogEntryModel> clientLog = FXCollections.emptyObservableList();
+
+        public final ObservableList<LogEntryModel> serverLog = FXCollections.emptyObservableList();
+
         public final ObservableList<PlayerModel> players = FXCollections.emptyObservableList();
 
-        public final int boardSize;
+        public final ObjectProperty<PlayerModel> currentPlayer = new SimpleObjectProperty<>();
 
-        public GameModel(int boardSize) {
-            this.boardSize = boardSize;
+        public final BooleanProperty gameStarted = new SimpleBooleanProperty(this, "gameStarted", false);
+
+        public final IntegerProperty boardSize = new SimpleIntegerProperty(this, "boardSize", 0);
+
+        public void initGameStarted(int newBoardSize) {
+            boardSize.set(newBoardSize);
+            gameStarted.set(true);
         }
+
+
     }
 
     /**
@@ -391,7 +440,8 @@ public class GameUI {
 
         private ObjectProperty<Date> time = new SimpleObjectProperty<>(this, "date", new Date());
 
-        public LogEntryModel() {
+        public LogEntryModel(String message) {
+            this(message, new Date());
         }
 
         public LogEntryModel(String message, Date time) {
@@ -459,6 +509,54 @@ public class GameUI {
         public GameView(UIController uiController) {
             this.uiController = uiController;
             this.mazeBoard = new MazeBoard(this);
+            this.initUI();
+        }
+
+        private void initUI() {
+            GameModel gameModel = uiController.getGameModel();
+
+            // Client Log Panel
+            TitledPane playerLogPane = new TitledPane();
+            playerLogPane.setText("Player Log");
+            playerLogPane.setAnimated(false);
+            playerLogPane.setCollapsible(false);
+            playerLogPane.setExpanded(true);
+            playerLogPane.setContent(createPlayerLogPanel(gameModel.clientLog));
+
+            // Server Log Panel
+            TitledPane serverLogPane = new TitledPane();
+            serverLogPane.textProperty().bind(Bindings.concat("Server Log - "));
+            serverLogPane.setAnimated(false);
+            serverLogPane.setCollapsible(false);
+            serverLogPane.setExpanded(true);
+            serverLogPane.setContent(createServerLogPanel(gameModel.serverLog));
+
+            SplitPane logPanels = new SplitPane(playerLogPane, serverLogPane);
+            logPanels.setOrientation(Orientation.HORIZONTAL);
+            logPanels.setDividerPositions(.5);
+
+            // Player List Panel
+            TitledPane playerListPane = new TitledPane();
+            playerListPane.setText("Players");
+            playerListPane.setContent(createPlayerList(gameModel.players));
+            playerListPane.setCollapsible(false);
+            playerListPane.setMaxHeight(Double.MAX_VALUE);
+
+            // Game Panel
+            TitledPane gamePane = new TitledPane();
+            gamePane.textProperty().bind(Bindings.concat("Game: [", gameModel.boardSize, " x ", gameModel.boardSize, "]"));
+            gamePane.setContent(createGamePanel());
+            gamePane.setAnimated(false);
+            gamePane.setCollapsible(false);
+            gamePane.setExpanded(true);
+
+            SplitPane splitter1 = new SplitPane(gamePane, playerListPane);
+            splitter1.setOrientation(Orientation.HORIZONTAL);
+            splitter1.setDividerPositions(.7);
+
+            SplitPane splitter2 = new SplitPane(splitter1, logPanels);
+            splitter2.setOrientation(Orientation.VERTICAL);
+            splitter2.setDividerPositions(.7);
         }
 
         /**
@@ -466,7 +564,7 @@ public class GameUI {
          */
         public void startGame() {
             GameModel gameModel = uiController.getGameModel();
-            mazeBoard.init(gameModel.boardSize, gameModel.players);
+            mazeBoard.init(gameModel.boardSize.get(), gameModel.players);
             setupPlayerSelectionHandler(gameModel.players);
         }
 
