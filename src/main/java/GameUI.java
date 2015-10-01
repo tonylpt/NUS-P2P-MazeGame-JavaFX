@@ -653,7 +653,7 @@ public class GameUI {
 
             Label colorLabel = new Label();
             colorLabel.setAlignment(Pos.CENTER);
-            colorLabel.setStyle("-fx-background-color: rgba(155, 155, 155, 155); -fx-font-size: 100px; -fx-font-weight: bold;");
+            colorLabel.setStyle("-fx-background-color: rgba(155, 155, 155, .85); -fx-font-size: 100px; -fx-font-weight: bold;");
             colorLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
             colorLabel.visibleProperty().bind(gameModel.runningState.isNotEqualTo(RunningState.GAME_STARTED));
             colorLabel.textProperty().bind(
