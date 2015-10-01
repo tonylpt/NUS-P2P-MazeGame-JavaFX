@@ -11,7 +11,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.effect.DropShadow;
@@ -37,7 +36,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
 
 /**
  * @author lpthanh
@@ -72,6 +71,7 @@ public class GameUI {
         // trying to bootstrap the game class
         this.uiController = new UIController();
         this.game = new P2PGame(params, logger, uiController);
+        this.uiController.setGame(game);
         this.logger.setExtraOutput(uiController);
     }
 
@@ -79,8 +79,8 @@ public class GameUI {
      * Shows the UI on the screen.
      */
     public void startGame(Stage stage) {
-        Scene scene = new Scene(uiController.getRootUI(), 1000, 800);
-        scene.setOnKeyTyped(keyEvent -> uiController.handleKeyTyped(keyEvent));
+        Scene scene = new Scene(uiController.getGameView(), 1000, 800);
+        scene.setOnKeyTyped(uiController::handleKeyTyped);
         stage.setScene(scene);
         stage.setTitle("CS5223 - Maze Game");
         stage.show();
@@ -135,7 +135,7 @@ public class GameUI {
     /**
      * The main game controller that coordinates the UI and logic.
      */
-    public static class UIController implements ILogger {
+    public class UIController implements ILogger {
 
         private final GameView gameView;
 
@@ -144,7 +144,7 @@ public class GameUI {
         private P2PGame game;
 
         public UIController() {
-            this.gameModel = new GameModel();
+            this.gameModel = new GameModel(this);
             this.gameView = new GameView(this);
         }
 
@@ -152,7 +152,7 @@ public class GameUI {
             this.game = game;
         }
 
-        public Parent getRootUI() {
+        public GameView getGameView() {
             return this.gameView;
         }
 
@@ -180,18 +180,22 @@ public class GameUI {
 
         private void moveUp() {
             gameView.highlightUp();
+            game.getGameClient().sendMoveAsync(Move.Direction.N);
         }
 
         private void moveDown() {
             gameView.highlightDown();
+            game.getGameClient().sendMoveAsync(Move.Direction.S);
         }
 
         private void moveLeft() {
             gameView.highlightLeft();
+            game.getGameClient().sendMoveAsync(Move.Direction.W);
         }
 
         private void moveRight() {
             gameView.highlightRight();
+            game.getGameClient().sendMoveAsync(Move.Direction.E);
         }
 
         private void addClientLogSafe(LogEntryModel logEntry) {
@@ -243,9 +247,12 @@ public class GameUI {
         }
 
         public void onGameStarted(GameState gameState) {
-            int boardSize = gameState.getBoardSize();
-            List<Player> playerList = gameState.getPlayerList();
+            getGameModel().initGameStarted(gameState);
+            getGameView().startGame();
+        }
 
+        public void onGameStateUpdated(GameState gameState) {
+            getGameModel().updateGameState(gameState);
         }
     }
 
@@ -253,7 +260,7 @@ public class GameUI {
      * Represents the game model.
      * Encapsulates all the global variables needed for the game and UI.
      */
-    private static class GameModel {
+    public static class GameModel {
 
         public final ObservableList<LogEntryModel> clientLog = FXCollections.observableArrayList();
 
@@ -267,38 +274,79 @@ public class GameUI {
 
         public final IntegerProperty boardSize = new SimpleIntegerProperty(this, "boardSize", 0);
 
-        public void initGameStarted(int newBoardSize) {
-            boardSize.set(newBoardSize);
+        private final Map<String, PlayerModel> playerIdModelMapping = new HashMap<>();
+
+        private IntegerProperty[][] treasureCounts;
+
+        private UIController uiController;
+
+        public GameModel(UIController uiController) {
+            this.uiController = uiController;
+        }
+
+        public void initGameStarted(GameState gameState) {
+            int boardSize = gameState.getBoardSize();
+            this.boardSize.set(boardSize);
+
+            // init the treasure array
+            treasureCounts = new IntegerProperty[boardSize][boardSize];
+            for (int i = 0; i < boardSize; ++i) {
+                for (int j = 0; j < boardSize; ++j) {
+                    treasureCounts[i][j] = new SimpleIntegerProperty(0);
+                }
+            }
+
+            updateGameState(gameState);
             gameStarted.set(true);
         }
 
 
+        public void updateGameState(GameState gameState) {
+            synchronized (gameState) {
+                List<Player> playerList = gameState.getPlayerList();
+                List<Treasure> treasureList = gameState.getTreasureList();
+
+                playerList.forEach(player -> {
+                    PlayerModel playerModel = playerIdModelMapping.get(player.getId());
+                    if (playerModel != null) {
+                        playerModel.copyFrom(player);
+                    } else {
+                        playerModel = new PlayerModel(this);
+                        playerModel.copyFrom(player);
+                        players.add(playerModel);
+                        playerIdModelMapping.put(player.getId(), playerModel);
+                    }
+                });
+
+                int boardSize = this.boardSize.get();
+                int[][] treasureCells = new int[boardSize][boardSize];
+                for (int i = 0; i < boardSize; ++i) {
+                    for (int j = 0; j < boardSize; ++j) {
+                        treasureCells[i][j] = 0;
+                    }
+                }
+
+                treasureList.forEach(treasure -> {
+                    treasureCells[treasure.getPosX()][treasure.getPosY()]++;
+                });
+
+                for (int i = 0; i < boardSize; ++i) {
+                    for (int j = 0; j < boardSize; ++j) {
+                        treasureCounts[i][j].set(treasureCells[i][j]);
+                    }
+                }
+            }
+        }
+
+        boolean isSelf(String playerId) {
+            return uiController.game.isSelf(playerId);
+        }
     }
 
     /**
      * Represents the player model.
      */
-    private static class PlayerModel {
-
-        public enum Role {
-
-            PRIMARY_SERVER("Primary"),
-
-            BACKUP_SERVER("Backup"),
-
-            NON_SERVER("Player");
-
-            private String uiName;
-
-            Role(String uiName) {
-                this.uiName = uiName;
-            }
-
-            @Override
-            public String toString() {
-                return this.uiName;
-            }
-        }
+    public static class PlayerModel {
 
         private BooleanProperty self = new SimpleBooleanProperty(this, "self", false);
 
@@ -306,7 +354,7 @@ public class GameUI {
 
         private BooleanProperty uiFocused = new SimpleBooleanProperty(this, "uiFocused", false);
 
-        private ObjectProperty<Role> role = new SimpleObjectProperty<>(this, "role", Role.NON_SERVER);
+        private ObjectProperty<PeerRole> role = new SimpleObjectProperty<>(this, "role", PeerRole.NON_SERVER);
 
         private StringProperty name = new SimpleStringProperty(this, "name", null);
 
@@ -316,15 +364,19 @@ public class GameUI {
 
         private IntegerProperty yPos = new SimpleIntegerProperty(this, "yPos", 0);
 
+        private final GameModel parent;
+
         public PlayerModel(String name,
                            boolean isSelf,
                            boolean isAlive,
                            boolean isUIFocused,
-                           Role role,
+                           PeerRole role,
                            int xPos,
                            int yPos,
-                           int treasureObtained) {
+                           int treasureObtained,
+                           GameModel parent) {
 
+            this.parent = parent;
             setName(name);
             setSelf(isSelf);
             setAlive(isAlive);
@@ -335,16 +387,18 @@ public class GameUI {
             setTreasureObtained(treasureObtained);
         }
 
-        public PlayerModel(String name) {
-            if (name == null) {
-                name = generateDefaultRandomName();
-            }
-
-            this.setName(name);
+        public PlayerModel(GameModel parent) {
+            this.parent = parent;
         }
 
-        public PlayerModel() {
-            this(null);
+        public void copyFrom(Player player) {
+            setName(player.getId());
+            setXPos(player.getPosX());
+            setYPos(player.getPosY());
+            setAlive(player.isAlive());
+            setRole(player.getRole());
+            setTreasureObtained(player.getTreasureCount());
+            setSelf(parent.isSelf(player.getId()));
         }
 
         public final String getName() {
@@ -431,24 +485,16 @@ public class GameUI {
             return uiFocused;
         }
 
-        public final Role getRole() {
+        public final PeerRole getRole() {
             return roleProperty().get();
         }
 
-        public final void setRole(Role role) {
+        public final void setRole(PeerRole role) {
             roleProperty().set(role);
         }
 
-        public ObjectProperty<Role> roleProperty() {
+        public ObjectProperty<PeerRole> roleProperty() {
             return role;
-        }
-
-        private static String generateDefaultRandomName() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("player-");
-            UUID uuid = UUID.randomUUID();
-            sb.append(uuid.toString().hashCode());
-            return sb.toString();
         }
 
     }
@@ -1046,8 +1092,7 @@ public class GameUI {
             PlayerModel player = piece.getPlayer();
             if (player != null) {
                 ChangeListener<Number> positionChange = (observable, oldPos, newPos) -> {
-                    GridPane.setRowIndex(piece, player.getXPos());
-                    GridPane.setColumnIndex(piece, player.getYPos());
+                    refreshPieceGridCell(piece);
                 };
 
                 player.xPosProperty().addListener(positionChange);
@@ -1056,6 +1101,15 @@ public class GameUI {
 
             piece.layoutXProperty().addListener(animator);
             piece.layoutYProperty().addListener(animator);
+
+            // set the initial location
+            refreshPieceGridCell(piece);
+        }
+
+        private void refreshPieceGridCell(PlayerPiece piece) {
+            PlayerModel player = piece.getPlayer();
+            GridPane.setRowIndex(piece, player.getYPos());
+            GridPane.setColumnIndex(piece, player.getXPos());
         }
 
         /**

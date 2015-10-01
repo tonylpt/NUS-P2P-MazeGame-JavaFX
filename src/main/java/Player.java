@@ -15,15 +15,21 @@ public class Player implements Serializable {
 
     private boolean alive;
 
+    private PeerRole role;
+
     public Player(String id,
                   int posX,
                   int posY,
-                  int treasureCount) {
+                  int treasureCount,
+                  boolean alive,
+                  PeerRole role) {
 
         this.id = id;
         this.posX = posX;
         this.posY = posY;
         this.treasureCount = treasureCount;
+        this.alive = alive;
+        this.role = role;
     }
 
     public String getId() {
@@ -64,5 +70,13 @@ public class Player implements Serializable {
 
     public void setAlive(boolean alive) {
         this.alive = alive;
+    }
+
+    public PeerRole getRole() {
+        return role;
+    }
+
+    public void setRole(PeerRole role) {
+        this.role = role;
     }
 }

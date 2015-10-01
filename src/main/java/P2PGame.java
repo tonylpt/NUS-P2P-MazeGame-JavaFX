@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class P2PGame extends UnicastRemoteObject implements IPeer {
 
-    public static final long PING_INTERVAL = 4000;
+    public static final long PING_INTERVAL = 2000;
 
     public static final String NAME_PEER = "FRIENDLY_PEER";
 
@@ -124,6 +124,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         return new RMIServer(registry, listeningPort);
     }
 
+    public GameClient getGameClient() {
+        return gameClient;
+    }
+
     /**
      * Every peer acts as an RMI Server. This class is to contain the port that the peer listens on,
      * and the registry created on that port.
@@ -149,7 +153,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
     }
 
-    private boolean isSelf(String playerId) {
+    boolean isSelf(String playerId) {
         return playerId.equals(gameClient.getPlayerId());
     }
 
@@ -213,7 +217,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         return backupServer.callBackupOnPrimaryDied(peer, playerId, authCode, deadPrimary);
     }
 
-    private class GameClient {
+    class GameClient {
 
         private GameState gameState;
 
@@ -239,11 +243,12 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         private void setGameState(GameState gameState) {
             this.gameState = gameState;
-            Platform.runLater(() -> uiController.onGameStarted(gameState));
+            Platform.runLater(() -> uiController.onGameStateUpdated(gameState));
         }
 
         public void callClientGameStarted(GameState gameState) {
-            setGameState(gameState);
+            this.gameState = gameState;
+            Platform.runLater(() -> uiController.onGameStarted(gameState));
             startPulseChecking();
         }
 
@@ -300,17 +305,21 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 processPingReply(reply);
 
             } catch (RemoteException e) {
-                logger.clientLog("Primary Server is down. Contacting Backup Server.");
+                primaryDown(primaryServer);
+            }
+        }
 
-                // contact backup
-                IPeer backupServer = gameState.getServerConfig().getBackupServer();
-                try {
-                    IReply.PingReply reply = backupServer.callBackupOnPrimaryDied(self, playerId, authCode, primaryServer);
-                    processPingReply(reply);
-                } catch (RemoteException e1) {
-                    // both server is down. sos
-                    logger.clientLog("Both servers are down without alternative.");
-                }
+        private void primaryDown(IPeer primaryServer) {
+            logger.clientLog("Primary Server is down. Contacting Backup Server.");
+
+            // contact backup
+            IPeer backupServer = gameState.getServerConfig().getBackupServer();
+            try {
+                IReply.PingReply reply = backupServer.callBackupOnPrimaryDied(self, playerId, authCode, primaryServer);
+                processPingReply(reply);
+            } catch (RemoteException e1) {
+                // both server is down. sos
+                logger.clientLog("Both servers are down without alternative.");
             }
         }
 
@@ -337,18 +346,79 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
             }
         }
 
+        public void sendMoveAsync(Move.Direction dir) {
+            exec.submit(() -> {
+                IPeer primaryServer = gameState.getServerConfig().getPrimaryServer();
+
+                try {
+                    // contact primary
+                    IReply.MoveReply reply = primaryServer.callPrimaryMove(self, dir, playerId, authCode);
+                    if (reply.isIllegalMove()) {
+                        logger.clientLog("Move was not allowed");
+                    }
+
+                    processPingReply(reply);
+
+                } catch (RemoteException e) {
+                    primaryDown(primaryServer);
+                }
+            });
+        }
     }
 
-    /**
-     * This parent class contains the basic implementation for a primary server's logic.
-     */
-    private abstract class PrimaryServer {
+    private abstract class Server {
 
         protected GameState gameState;
 
         protected ServerSecrets serverSecrets;
 
         protected final Object gameStateLock = new Object();
+
+        protected final void setRolePrimary(String playerId) {
+            if (gameState == null) {
+                return;
+            }
+
+            gameState.getPlayerList().forEach(player -> {
+                if (player.getId().equals(playerId)) {
+                    player.setRole(PeerRole.PRIMARY_SERVER);
+                } else if (player.getRole() == PeerRole.PRIMARY_SERVER) {
+                    // clear the primary role of all others
+                    player.setRole(PeerRole.NON_SERVER);
+                }
+            });
+        }
+
+        protected final void setRoleBackup(String playerId) {
+            if (gameState == null) {
+                return;
+            }
+
+            gameState.getPlayerList().forEach(player -> {
+                if (player.getId().equals(playerId)) {
+                    player.setRole(PeerRole.BACKUP_SERVER);
+                } else if (player.getRole() == PeerRole.BACKUP_SERVER) {
+                    // clear the backup role of all others
+                    player.setRole(PeerRole.NON_SERVER);
+                }
+            });
+        }
+
+        protected final void setDead(String playerId) {
+            for (Player player : gameState.getPlayerList()) {
+                if (player.getId().equals(playerId)) {
+                    player.setAlive(false);
+                    player.setRole(PeerRole.DEAD);
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * This parent class contains the basic implementation for a primary server's logic.
+     */
+    private abstract class PrimaryServer extends Server {
 
         protected Map<IPeer, Long> peerLastAccessMillis = new HashMap<>();
 
@@ -503,10 +573,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     } else if (peer.equals(gameState.getServerConfig().getBackupServer())) {
                         logger.serverLog("Backup Server seems dormant. Retrying.");
                         if (!updateBackup()) {
-                            player.setAlive(false);
+                            setDead(player.getId());
                         }
                     } else {
-                        player.setAlive(false);
+                        setDead(player.getId());
                         logger.serverLog("Player [" + player.getId() + "] seems dormant.");
                     }
                 }
@@ -614,20 +684,28 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     String playerId = getNextPlayerId();
                     String authCode = getNextAuthCode();
 
-                    Player player = new Player(playerId, 0, 0, 0);
-                    player.setAlive(true);
+                    Player player = new Player(playerId, 0, 0, 0, true, PeerRole.NON_SERVER);
+
+                    // If this is the first peer, it's the primary server
+                    if (gameState.getPlayerList().isEmpty()) {
+                        player.setRole(PeerRole.PRIMARY_SERVER);
+                    }
+
                     gameState.getPlayerList().add(player);
 
                     // update the server secrets
                     serverSecrets.getAuthCodes().put(playerId, authCode);
                     serverSecrets.getPeers().put(playerId, peer);
 
+                    // If this is the second peer, it's the backup server
                     boolean becomeBackup = gameState.getPlayerList().size() == 2;
                     if (becomeBackup) {
+                        player.setRole(PeerRole.BACKUP_SERVER);
                         logger.serverLog("Adding player [" + playerId + "] and designating it as Backup Server");
                         gameState.getServerConfig().setBackupServer(peer);
                         return IReply.JoinReply.createApproveAsBackupReply(playerId, authCode);
                     } else {
+                        player.setRole(PeerRole.NON_SERVER);
                         logger.serverLog("Adding player [" + playerId + "]");
                         return IReply.JoinReply.createApproveAsNormalReply(playerId, authCode);
                     }
@@ -743,13 +821,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
     }
 
 
-    private abstract class BackupServer {
-
-        protected GameState gameState;
-
-        protected ServerSecrets serverSecrets;
-
-        protected final Object gameStateLock = new Object();
+    private abstract class BackupServer extends Server {
 
         public void callBackupUpdate(GameState gameState, ServerSecrets serverSecrets) {
             logger.serverLog("Receive update from Primary Server");
@@ -793,6 +865,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                             primaryServer.callPrimaryPing(self, gameClient.getPlayerId(), gameClient.getAuthCode());
                         } catch (RemoteException e) {
                             if (!isSelf(playerId)) {
+                                setRolePrimary(playerId);
                                 logger.serverLog("Promoting [" + playerId + "] as new Primary Server");
                                 this.gameState.getServerConfig().setPrimaryServer(peer);
                                 return IReply.PingReply.createPromoteToPrimary(gameState, serverSecrets);

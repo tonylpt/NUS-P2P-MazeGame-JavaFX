@@ -108,7 +108,7 @@ public class GameState implements Serializable {
 
         boolean illegalMove = false;
         switch (move.getDirection()) {
-            case N: {
+            case S: {
                 if (player.getPosY() + 1 >= getBoardSize()) {
                     // check for illegal move
                     illegalMove = true;
@@ -132,7 +132,7 @@ public class GameState implements Serializable {
                 break;
             }
 
-            case S: {
+            case N: {
                 if (player.getPosY() - 1 < 0) {
                     // check for illegal move
                     illegalMove = true;

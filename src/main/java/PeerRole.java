@@ -7,7 +7,9 @@ public enum PeerRole {
 
     BACKUP_SERVER("Backup"),
 
-    NON_SERVER("Player");
+    NON_SERVER("Player"),
+
+    DEAD("Dead");
 
     private String uiName;
 
