@@ -9,11 +9,15 @@ public class ServerConfig implements Serializable {
 
     private IPeer backupServer;
 
+    private String primaryPlayerId;
+
+    private String backupPlayerId;
+
     public IPeer getPrimaryServer() {
         return primaryServer;
     }
 
-    public void setPrimaryServer(IPeer primaryServer) {
+    private void setPrimaryServer(IPeer primaryServer) {
         this.primaryServer = primaryServer;
     }
 
@@ -21,8 +25,33 @@ public class ServerConfig implements Serializable {
         return backupServer;
     }
 
-    public void setBackupServer(IPeer backupServer) {
+    private void setBackupServer(IPeer backupServer) {
         this.backupServer = backupServer;
     }
 
+    public String getPrimaryPlayerId() {
+        return primaryPlayerId;
+    }
+
+    private void setPrimaryPlayerId(String primaryPlayerId) {
+        this.primaryPlayerId = primaryPlayerId;
+    }
+
+    public String getBackupPlayerId() {
+        return backupPlayerId;
+    }
+
+    private void setBackupPlayerId(String backupPlayerId) {
+        this.backupPlayerId = backupPlayerId;
+    }
+
+    public void setPrimary(String serverId, IPeer peer) {
+        setPrimaryPlayerId(serverId);
+        setPrimaryServer(peer);
+    }
+
+    public void setBackup(String serverId, IPeer peer) {
+        setBackupPlayerId(serverId);
+        setBackupServer(peer);
+    }
 }

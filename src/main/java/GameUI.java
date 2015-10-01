@@ -327,7 +327,9 @@ public class GameUI {
                 }
 
                 treasureList.forEach(treasure -> {
-                    treasureCells[treasure.getPosX()][treasure.getPosY()]++;
+                    if (treasure.getAssignedPlayerId() == null) {
+                        treasureCells[treasure.getPosX()][treasure.getPosY()]++;
+                    }
                 });
 
                 for (int i = 0; i < boardSize; ++i) {
@@ -803,9 +805,13 @@ public class GameUI {
             this.cells = new MazeCell[boardSize][boardSize];
             this.players = players;
 
+            IntegerProperty[][] treasureCounts = this.parent.uiController.getGameModel().treasureCounts;
+
             for (int i = 0; i < boardSize; i++) {
                 for (int j = 0; j < boardSize; j++) {
                     MazeCell cell = this.cells[i][j] = new MazeCell(i, j);
+                    cell.bindCount(treasureCounts[i][j]);
+
                     // deselect any player piece
                     cell.setOnMouseClicked(deselector);
                     add(cell, i, j);
@@ -1032,6 +1038,10 @@ public class GameUI {
 
         public int getYPos() {
             return yPos;
+        }
+
+        public void bindCount(IntegerProperty count) {
+            treasureCount.bind(count);
         }
     }
 

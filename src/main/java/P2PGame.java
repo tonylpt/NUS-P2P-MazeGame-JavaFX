@@ -506,7 +506,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     // failed to update to backup
                     // only try to promote if peer is not the primary server
                     if (!peer.equals(self)) {
-                        if (promotePeerAsBackupIfNeeded(peer)) {
+                        if (promotePeerAsBackupIfNeeded(playerId, peer)) {
                             return IReply.MoveReply.createPromoteToBackup(gameState, serverSecrets, illegalMove);
                         }
                     }
@@ -588,7 +588,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
          *
          * @return true if promoted
          */
-        protected boolean promotePeerAsBackupIfNeeded(IPeer peer) {
+        protected boolean promotePeerAsBackupIfNeeded(String playerId, IPeer peer) {
             if (promoteNewBackupServer) {
                 if (peer.equals(self)) {
                     return false;
@@ -597,7 +597,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 synchronized (gameStateLock) {
                     if (promoteNewBackupServer) {
                         promoteNewBackupServer = false;
-                        gameState.getServerConfig().setBackupServer(peer);
+                        gameState.getServerConfig().setBackup(playerId, peer);
                         return true;
                     }
                 }
@@ -619,7 +619,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 return IReply.PingReply.createUpdate(gameState);
             }
 
-            boolean promoted = promotePeerAsBackupIfNeeded(peer);
+            boolean promoted = promotePeerAsBackupIfNeeded(playerId, peer);
             if (promoted) {
                 logger.serverLog("Promoting [" + playerId + "] as Backup Server");
                 return IReply.PingReply.createPromoteToBackup(gameState, serverSecrets);
@@ -641,6 +641,8 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         private final int treasureCount;
 
+        private String bootstrappingPlayerId;
+
         /**
          * Creating the server, supplying the board size and treasure count from command-line arguments.
          */
@@ -655,8 +657,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         }
 
         public void startAccepting() {
+            bootstrappingPlayerId = getNextPlayerId();
+
             gameState.setRunningState(RunningState.ACCEPTING_PLAYERS);
-            gameState.getServerConfig().setPrimaryServer(self);
+            gameState.getServerConfig().setPrimary(bootstrappingPlayerId, self);
 
             logger.serverLog("Start accepting connections for 20 seconds");
 
@@ -681,15 +685,19 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
             synchronized (gameStateLock) {
                 if (gameState.getRunningState() == RunningState.ACCEPTING_PLAYERS) {
                     // generate player ID and auth code for this player
-                    String playerId = getNextPlayerId();
                     String authCode = getNextAuthCode();
 
-                    Player player = new Player(playerId, 0, 0, 0, true, PeerRole.NON_SERVER);
+                    Player player = new Player(null, 0, 0, 0, true, PeerRole.NON_SERVER);
 
                     // If this is the first peer, it's the primary server
                     if (gameState.getPlayerList().isEmpty()) {
+                        player.setId(bootstrappingPlayerId);
                         player.setRole(PeerRole.PRIMARY_SERVER);
+                    }else{
+                        player.setId(getNextPlayerId());
                     }
+
+                    String playerId = player.getId();
 
                     gameState.getPlayerList().add(player);
 
@@ -702,10 +710,9 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     if (becomeBackup) {
                         player.setRole(PeerRole.BACKUP_SERVER);
                         logger.serverLog("Adding player [" + playerId + "] and designating it as Backup Server");
-                        gameState.getServerConfig().setBackupServer(peer);
+                        gameState.getServerConfig().setBackup(playerId, peer);
                         return IReply.JoinReply.createApproveAsBackupReply(playerId, authCode);
                     } else {
-                        player.setRole(PeerRole.NON_SERVER);
                         logger.serverLog("Adding player [" + playerId + "]");
                         return IReply.JoinReply.createApproveAsNormalReply(playerId, authCode);
                     }
@@ -864,10 +871,13 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                         try {
                             primaryServer.callPrimaryPing(self, gameClient.getPlayerId(), gameClient.getAuthCode());
                         } catch (RemoteException e) {
+                            setDead(gameState.getServerConfig().getPrimaryPlayerId());
                             if (!isSelf(playerId)) {
-                                setRolePrimary(playerId);
+                                player.setAlive(true);
+                                player.setRole(PeerRole.PRIMARY_SERVER);
+
                                 logger.serverLog("Promoting [" + playerId + "] as new Primary Server");
-                                this.gameState.getServerConfig().setPrimaryServer(peer);
+                                gameState.getServerConfig().setPrimary(playerId, peer);
                                 return IReply.PingReply.createPromoteToPrimary(gameState, serverSecrets);
                             }
                         }
