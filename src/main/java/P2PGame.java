@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class P2PGame extends UnicastRemoteObject implements IPeer {
 
-    public static final long PING_INTERVAL = 2000;
+    public static final long PING_INTERVAL = 5000;
 
     public static final String NAME_PEER = "FRIENDLY_PEER";
 
@@ -714,7 +714,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
             };
 
             Calendar c = Calendar.getInstance();
-            c.add(Calendar.SECOND, 30);
+            c.add(Calendar.SECOND, 20);
             timer.schedule(task, c.getTime());
         }
 
