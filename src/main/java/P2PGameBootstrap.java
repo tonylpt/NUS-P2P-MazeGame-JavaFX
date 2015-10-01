@@ -1,4 +1,5 @@
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.util.Map;
@@ -28,11 +29,17 @@ public class P2PGameBootstrap extends Application {
         String primaryParam = params.get("primary");
         String connectParam = params.get("connect");
 
-        if (primaryParam != null && connectParam != null) {
+        if (!(primaryParam != null ^ connectParam != null)) {
             System.out.println("Please specify either one of --primary or --connect");
             System.exit(0);
             return;
         }
+
+        // kill application on window close
+        primaryStage.setOnCloseRequest(e -> {
+            Platform.exit();
+            System.exit(0);
+        });
 
         if (primaryParam != null) {
             // Start as primary server

@@ -1,4 +1,5 @@
 import javafx.animation.*;
+import javafx.application.Platform;
 import javafx.beans.binding.*;
 import javafx.beans.property.*;
 import javafx.beans.value.ChangeListener;
@@ -99,26 +100,35 @@ public class GameUI {
         @Override
         public void clientLog(String message) {
             System.out.println("CLIENT: " + message);
-            extraOutput.clientLog(message);
+            if (extraOutput != null) {
+                extraOutput.clientLog(message);
+            }
         }
 
         @Override
         public void clientLogError(String message, Exception e) {
             System.out.println("CLIENT: " + message);
             e.printStackTrace();
-            extraOutput.clientLogError(message, e);
+            if (extraOutput != null) {
+                extraOutput.clientLogError(message, e);
+            }
         }
 
         @Override
         public void serverLog(String message) {
             System.out.println("SERVER: " + message);
-            extraOutput.serverLog(message);
+            if (extraOutput != null) {
+                extraOutput.serverLog(message);
+            }
         }
 
         @Override
         public void serverLogError(String message, Exception e) {
             System.out.println("SERVER: " + message);
-            extraOutput.serverLogError(message, e);
+            e.printStackTrace();
+            if (extraOutput != null) {
+                extraOutput.serverLogError(message, e);
+            }
         }
     }
 
@@ -134,8 +144,8 @@ public class GameUI {
         private P2PGame game;
 
         public UIController() {
-            this.gameView = new GameView(this);
             this.gameModel = new GameModel();
+            this.gameView = new GameView(this);
         }
 
         public void setGame(P2PGame game) {
@@ -184,9 +194,17 @@ public class GameUI {
             gameView.highlightRight();
         }
 
+        private void addClientLogSafe(LogEntryModel logEntry) {
+            Platform.runLater(() -> gameModel.clientLog.add(logEntry));
+        }
+
+        private void addServerLogSafe(LogEntryModel logEntry) {
+            Platform.runLater(() -> gameModel.serverLog.add(logEntry));
+        }
+
         @Override
         public void clientLog(String message) {
-            gameModel.clientLog.add(new LogEntryModel(message, new Date()));
+            addClientLogSafe(new LogEntryModel(message, new Date()));
         }
 
         @Override
@@ -194,17 +212,19 @@ public class GameUI {
             StringWriter stringWriter = new StringWriter();
             PrintWriter printWriter = new PrintWriter(stringWriter);
             printWriter.println(message);
-            printWriter.println("=====stack=trace======");
-            e.printStackTrace(printWriter);
-            printWriter.println("======================");
+            if (e != null) {
+                printWriter.println("=====stack=trace======");
+                e.printStackTrace(printWriter);
+                printWriter.println("======================");
+            }
             printWriter.close();
             String msg = stringWriter.toString();
-            gameModel.clientLog.add(new LogEntryModel(msg, new Date()));
+            addClientLogSafe(new LogEntryModel(msg, new Date()));
         }
 
         @Override
         public void serverLog(String message) {
-            gameModel.serverLog.add(new LogEntryModel(message, new Date()));
+            addServerLogSafe(new LogEntryModel(message, new Date()));
         }
 
         @Override
@@ -212,12 +232,14 @@ public class GameUI {
             StringWriter stringWriter = new StringWriter();
             PrintWriter printWriter = new PrintWriter(stringWriter);
             printWriter.println(message);
-            printWriter.println("=====stack=trace======");
-            e.printStackTrace(printWriter);
-            printWriter.println("======================");
+            if (e != null) {
+                printWriter.println("=====stack=trace======");
+                e.printStackTrace(printWriter);
+                printWriter.println("======================");
+            }
             printWriter.close();
             String msg = stringWriter.toString();
-            gameModel.serverLog.add(new LogEntryModel(msg, new Date()));
+            addServerLogSafe(new LogEntryModel(msg, new Date()));
         }
 
         public void onGameStarted(GameState gameState) {
@@ -233,11 +255,11 @@ public class GameUI {
      */
     private static class GameModel {
 
-        public final ObservableList<LogEntryModel> clientLog = FXCollections.emptyObservableList();
+        public final ObservableList<LogEntryModel> clientLog = FXCollections.observableArrayList();
 
-        public final ObservableList<LogEntryModel> serverLog = FXCollections.emptyObservableList();
+        public final ObservableList<LogEntryModel> serverLog = FXCollections.observableArrayList();
 
-        public final ObservableList<PlayerModel> players = FXCollections.emptyObservableList();
+        public final ObservableList<PlayerModel> players = FXCollections.observableArrayList();
 
         public final ObjectProperty<PlayerModel> currentPlayer = new SimpleObjectProperty<>();
 
@@ -482,7 +504,7 @@ public class GameUI {
     /**
      * This class encapsulate the overall UI of the game window.
      */
-    private static class GameView extends Parent {
+    private static class GameView extends StackPane {
 
         private TableView<PlayerModel> playerList = new TableView<>();
 
@@ -557,6 +579,8 @@ public class GameUI {
             SplitPane splitter2 = new SplitPane(splitter1, logPanels);
             splitter2.setOrientation(Orientation.VERTICAL);
             splitter2.setDividerPositions(.7);
+
+            getChildren().add(splitter2);
         }
 
         /**

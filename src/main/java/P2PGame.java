@@ -1,5 +1,6 @@
 import javafx.application.Platform;
 
+import java.rmi.AlreadyBoundException;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -19,7 +20,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
     public static final String NAME_PEER = "FRIENDLY_PEER";
 
-    private final RMIServer rmiServer;
+    private RMIServer rmiServer;
 
     private final ILogger logger;
 
@@ -33,32 +34,46 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
     private BackupServer backupServer = new NilBackupServer();
 
-    private final ExecutorService exec = Executors.newCachedThreadPool();
+    private final ExecutorService exec = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = Executors.defaultThreadFactory().newThread(runnable);
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public P2PGame(GameParams params, ILogger logger, GameUI.UIController uiController) throws RemoteException {
         this.self = this;
         this.logger = logger;
         this.uiController = uiController;
-        this.rmiServer = createServer(params.isPrimary(), params.getHostPort().getPort(), logger);
-
-        if (this.rmiServer == null) {
-            throw new RuntimeException("Unable to create Peer object.");
-        }
-
         start(params);
     }
 
     private void start(GameParams params) {
         if (params instanceof GameParams.PrimaryParams) {
             GameParams.PrimaryParams primaryParams = (GameParams.PrimaryParams) params;
-            primaryServer = new BootstrappingPrimaryServer(
-                    primaryParams.getBoardSize(), primaryParams.getTreasureCount()
-            );
+            exec.execute(() -> {
+                try {
+                    GameParams.HostPort hostPort = params.getHostPort();
+                    P2PGame.this.rmiServer = createServer(this, true, hostPort.getPort(), logger);
+                    P2PGame.this.primaryServer = new BootstrappingPrimaryServer(
+                            primaryParams.getBoardSize(), primaryParams.getTreasureCount()
+                    );
+                    P2PGame.this.primaryServer.start();
+                    P2PGame.this.gameClient.connectToPrimary(hostPort.getHost(), hostPort.getPort());
+                } catch (Exception e) {
+                    logger.serverLogError("Unable to bind server.", e);
+                }
 
-            exec.execute(primaryServer::start);
+            });
         } else if (params instanceof GameParams.NonPrimaryParams) {
-            GameParams.HostPort hostPort = params.getHostPort();
-            exec.execute(() -> gameClient.connectToPrimary(hostPort.getHost(), hostPort.getPort()));
+            exec.execute(() -> {
+                try {
+                    GameParams.HostPort hostPort = params.getHostPort();
+                    P2PGame.this.rmiServer = createServer(this, false, hostPort.getPort(), logger);
+                    P2PGame.this.gameClient.connectToPrimary(hostPort.getHost(), hostPort.getPort());
+                } catch (Exception e) {
+                    logger.serverLogError("Unable to bind server.", e);
+                }
+            });
         }
     }
 
@@ -66,14 +81,20 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
      * Try to binds to a port, for both primary server and non-server players.
      * This is because each player can potentially become a server.
      */
-    private static RMIServer createServer(boolean primary, int port, ILogger logger) throws RemoteException {
+    private static RMIServer createServer(IPeer peer, boolean primary, int port, ILogger logger)
+            throws RemoteException, AlreadyBoundException {
+
+        Registry registry = null;
+        int listeningPort = 0;
+
         if (primary) {
             // try to create registry on the port
 
-            logger.serverLog("Attempting to listen on port " + port);
-            Registry registry = LocateRegistry.createRegistry(port);
-            logger.serverLog("Server registry was successfully created on port " + port);
-            return new RMIServer(registry, port);
+            listeningPort = port;
+            logger.serverLog("Attempting to listen on port " + listeningPort);
+            registry = LocateRegistry.createRegistry(port);
+            registry.bind(NAME_PEER, peer);
+            logger.serverLog("Server registry was successfully created on port " + listeningPort);
 
         } else {
 
@@ -84,12 +105,11 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
             do {
                 try {
-                    int listenPort = port + randomizer.nextInt(1000);
-                    logger.clientLog("Attempting to bind a client on port " + listenPort);
-                    Registry registry = LocateRegistry.createRegistry(listenPort);
-                    logger.clientLog("Client registry was successfully created on port " + listenPort);
-                    return new RMIServer(registry, listenPort);
-
+                    listeningPort = port + randomizer.nextInt(1000);
+                    logger.clientLog("Attempting to bind a client on port " + listeningPort);
+                    registry = LocateRegistry.createRegistry(listeningPort);
+                    registry.bind(NAME_PEER, peer);
+                    logger.clientLog("Client registry was successfully created on port " + listeningPort);
                 } catch (RemoteException e) {
                     // the exception may have been caused by the port's unavailability
                     retry = true;
@@ -101,7 +121,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
             } while (retry);
         }
 
-        return null;
+        return new RMIServer(registry, listeningPort);
     }
 
     /**
@@ -127,6 +147,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
             return listenPort;
         }
 
+    }
+
+    private boolean isSelf(String playerId) {
+        return playerId.equals(gameClient.getPlayerId());
     }
 
     /**
@@ -220,6 +244,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         public void callClientGameStarted(GameState gameState) {
             setGameState(gameState);
+            startPulseChecking();
         }
 
         public boolean connectToPrimary(String host, int port) {
@@ -236,14 +261,14 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 }
 
                 this.playerId = reply.getPlayerId();
+                this.authCode = reply.getAuthCode();
+
                 logger.clientLog("Player has joined the game, with ID = [" + getPlayerId() + "]");
 
                 if (reply.shouldBecomeBackup()) {
                     logger.clientLog("Player was promoted to be the Backup Server.");
                     backupServer = new ActiveBackupServer();
                 }
-
-                startPulseChecking();
 
                 return true;
 
@@ -292,13 +317,18 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         private void processPingReply(IReply.PingReply reply) {
             switch (reply.getPromotionStatus()) {
                 case PROMOTED_TO_PRIMARY: {
-                    primaryServer = new InheritingPrimaryServer(reply.getGameState(), reply.getServerSecrets());
                     setGameState(reply.getGameState());
+
+                    logger.clientLog("Promoted to Primary Server");
+                    primaryServer = new InheritingPrimaryServer(reply.getGameState(), reply.getServerSecrets());
+                    primaryServer.start();
                     break;
                 }
                 case PROMOTED_TO_BACKUP: {
-                    backupServer = new ActiveBackupServer(reply.getGameState(), reply.getServerSecrets());
                     setGameState(reply.getGameState());
+
+                    logger.clientLog("Promoted to Backup Server");
+                    backupServer = new ActiveBackupServer(reply.getGameState(), reply.getServerSecrets());
                     break;
                 }
                 default: {
@@ -456,6 +486,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
          */
         protected void doPulseCheck() {
             gameState.getPlayerList().forEach(player -> {
+                if (!player.isAlive()) {
+                    return;
+                }
+
                 IPeer peer = serverSecrets.getPeers().get(player.getId());
                 Long lastAccessMillis = peerLastAccessMillis.get(peer);
                 if (lastAccessMillis == null) {
@@ -464,7 +498,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
                 long silentPeriod = System.currentTimeMillis() - lastAccessMillis;
                 if (silentPeriod > 2 * PING_INTERVAL) {
-                    if (peer.equals(self)) {
+                    if (isSelf(player.getId())) {
                         // peer is primary server. ignoring.
                     } else if (peer.equals(gameState.getServerConfig().getBackupServer())) {
                         logger.serverLog("Backup Server seems dormant. Retrying.");
@@ -486,6 +520,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
          */
         protected boolean promotePeerAsBackupIfNeeded(IPeer peer) {
             if (promoteNewBackupServer) {
+                if (peer.equals(self)) {
+                    return false;
+                }
+
                 synchronized (gameStateLock) {
                     if (promoteNewBackupServer) {
                         promoteNewBackupServer = false;
@@ -507,9 +545,17 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
             updatePeerAlive(peer);
 
+            if (isSelf(playerId)) {
+                return IReply.PingReply.createUpdate(gameState);
+            }
+
             boolean promoted = promotePeerAsBackupIfNeeded(peer);
-            return promoted ? IReply.PingReply.createPromoteToBackup(gameState, serverSecrets) :
-                    IReply.PingReply.createUpdate(gameState);
+            if (promoted) {
+                logger.serverLog("Promoting [" + playerId + "] as Backup Server");
+                return IReply.PingReply.createPromoteToBackup(gameState, serverSecrets);
+            } else {
+                return IReply.PingReply.createUpdate(gameState);
+            }
         }
 
 
@@ -530,6 +576,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
          */
         public BootstrappingPrimaryServer(int boardSize, int treasureCount) {
             this.gameState = new GameState(boardSize);
+            this.serverSecrets = new ServerSecrets();
             this.treasureCount = treasureCount;
         }
 
@@ -568,6 +615,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     String authCode = getNextAuthCode();
 
                     Player player = new Player(playerId, 0, 0, 0);
+                    player.setAlive(true);
                     gameState.getPlayerList().add(player);
 
                     // update the server secrets
@@ -580,9 +628,11 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                         gameState.getServerConfig().setBackupServer(peer);
                         return IReply.JoinReply.createApproveAsBackupReply(playerId, authCode);
                     } else {
+                        logger.serverLog("Adding player [" + playerId + "]");
                         return IReply.JoinReply.createApproveAsNormalReply(playerId, authCode);
                     }
                 } else {
+                    logger.serverLog("Rejecting a new peer attempting to join");
                     return IReply.JoinReply.createDeclineReply();
                 }
             }
@@ -590,6 +640,12 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         private void startGame() {
             synchronized (gameStateLock) {
+                if (gameState.getServerConfig().getBackupServer() == null) {
+                    // there was no other joiners
+                    logger.serverLogError("There was no other player in the game.", null);
+                    return;
+                }
+
                 logger.serverLog("Game is started. No longer accepting players.");
                 gameState.initRandom(treasureCount);
                 gameState.setRunningState(RunningState.GAME_STARTED);
@@ -638,6 +694,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
     private class InheritingPrimaryServer extends PrimaryServer {
 
         public InheritingPrimaryServer(GameState gameState, ServerSecrets serverSecrets) {
+            logger.serverLog("Starting Primary Server");
             this.gameState = gameState;
             this.serverSecrets = serverSecrets;
         }
@@ -649,6 +706,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         @Override
         public IReply.JoinReply callPrimaryJoin(IPeer peer) {
             // No longer accepts joining
+            logger.serverLog("Rejecting a new peer attempting to join");
             return IReply.JoinReply.createDeclineReply();
         }
 
@@ -734,7 +792,8 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                         try {
                             primaryServer.callPrimaryPing(self, gameClient.getPlayerId(), gameClient.getAuthCode());
                         } catch (RemoteException e) {
-                            if (!peer.equals(self)) {
+                            if (!isSelf(playerId)) {
+                                logger.serverLog("Promoting [" + playerId + "] as new Primary Server");
                                 this.gameState.getServerConfig().setPrimaryServer(peer);
                                 return IReply.PingReply.createPromoteToPrimary(gameState, serverSecrets);
                             }
@@ -753,10 +812,11 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
     private class ActiveBackupServer extends BackupServer {
 
         public ActiveBackupServer() {
-
+            logger.serverLog("Starting Backup Server");
         }
 
         public ActiveBackupServer(GameState gameState, ServerSecrets serverSecrets) {
+            logger.serverLog("Starting Backup Server");
             this.gameState = gameState;
             this.serverSecrets = serverSecrets;
         }
