@@ -80,7 +80,7 @@ public class GameUI {
      */
     public void startGame(Stage stage) {
         Scene scene = new Scene(uiController.getGameView(), 1000, 800);
-        scene.setOnKeyTyped(uiController::handleKeyTyped);
+        scene.setOnKeyReleased(uiController::handleKeyReleased);
         stage.setScene(scene);
         stage.setTitle("CS5223 - Maze Game");
         stage.show();
@@ -108,7 +108,9 @@ public class GameUI {
         @Override
         public void clientLogError(String message, Exception e) {
             System.out.println("CLIENT: " + message);
-            e.printStackTrace();
+            if (e != null) {
+                e.printStackTrace();
+            }
             if (extraOutput != null) {
                 extraOutput.clientLogError(message, e);
             }
@@ -125,7 +127,9 @@ public class GameUI {
         @Override
         public void serverLogError(String message, Exception e) {
             System.out.println("SERVER: " + message);
-            e.printStackTrace();
+            if (e != null) {
+                e.printStackTrace();
+            }
             if (extraOutput != null) {
                 extraOutput.serverLogError(message, e);
             }
@@ -160,19 +164,19 @@ public class GameUI {
             return gameModel;
         }
 
-        public void handleKeyTyped(KeyEvent event) {
+        public void handleKeyReleased(KeyEvent event) {
             KeyCode code = event.getCode();
             switch (code) {
-                case A:
+                case LEFT:
                     moveLeft();
                     break;
-                case S:
+                case UP:
                     moveUp();
                     break;
-                case D:
+                case DOWN:
                     moveDown();
                     break;
-                case F:
+                case RIGHT:
                     moveRight();
                     break;
             }
@@ -268,7 +272,9 @@ public class GameUI {
 
         public final ObservableList<PlayerModel> players = FXCollections.observableArrayList();
 
-        public final ObjectProperty<PlayerModel> currentPlayer = new SimpleObjectProperty<>();
+        public final ObjectProperty<PeerRole> role = new SimpleObjectProperty<>();
+
+        public final ObjectProperty<RunningState> runningState = new SimpleObjectProperty<>(RunningState.ACCEPTING_PLAYERS);
 
         public final BooleanProperty gameStarted = new SimpleBooleanProperty(this, "gameStarted", false);
 
@@ -310,6 +316,12 @@ public class GameUI {
                     PlayerModel playerModel = playerIdModelMapping.get(player.getId());
                     if (playerModel != null) {
                         playerModel.copyFrom(player);
+
+                        // updating the role
+                        if (uiController.game.isSelf(player.getId())) {
+                            role.set(player.getRole());
+                        }
+
                     } else {
                         playerModel = new PlayerModel(this);
                         playerModel.copyFrom(player);
@@ -337,6 +349,8 @@ public class GameUI {
                         treasureCounts[i][j].set(treasureCells[i][j]);
                     }
                 }
+
+                runningState.set(gameState.getRunningState());
             }
         }
 
@@ -564,13 +578,13 @@ public class GameUI {
 
         private final Button clearServerLogList = new Button("Clear");
 
-        private final DirectionButton leftButton = new DirectionButton("left [A]");
+        private final DirectionButton leftButton = new DirectionButton("left");
 
-        private final DirectionButton rightButton = new DirectionButton("right [F]");
+        private final DirectionButton rightButton = new DirectionButton("right");
 
-        private final DirectionButton upButton = new DirectionButton("up [S]");
+        private final DirectionButton upButton = new DirectionButton("up");
 
-        private final DirectionButton downButton = new DirectionButton("down [D]");
+        private final DirectionButton downButton = new DirectionButton("down");
 
         private final MazeBoard mazeBoard;
 
@@ -595,7 +609,8 @@ public class GameUI {
 
             // Server Log Panel
             TitledPane serverLogPane = new TitledPane();
-            serverLogPane.textProperty().bind(Bindings.concat("Server Log - "));
+
+            serverLogPane.textProperty().bind(Bindings.concat("Server Log - ", gameModel.role.asString()));
             serverLogPane.setAnimated(false);
             serverLogPane.setCollapsible(false);
             serverLogPane.setExpanded(true);
@@ -624,7 +639,19 @@ public class GameUI {
             splitter1.setOrientation(Orientation.HORIZONTAL);
             splitter1.setDividerPositions(.7);
 
-            SplitPane splitter2 = new SplitPane(splitter1, logPanels);
+            Label colorLabel = new Label();
+            colorLabel.setAlignment(Pos.CENTER);
+            colorLabel.setStyle("-fx-background-color: rgba(155, 155, 155, 155); -fx-font-size: 100px; -fx-font-weight: bold;");
+            colorLabel.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+            colorLabel.visibleProperty().bind(gameModel.runningState.isNotEqualTo(RunningState.GAME_STARTED));
+            colorLabel.textProperty().bind(
+                    Bindings.when(gameModel.runningState.isEqualTo(RunningState.ACCEPTING_PLAYERS))
+                            .then("Ready?")
+                            .otherwise("Ended"));
+
+            StackPane stackPane = new StackPane(splitter1, colorLabel);
+
+            SplitPane splitter2 = new SplitPane(stackPane, logPanels);
             splitter2.setOrientation(Orientation.VERTICAL);
             splitter2.setDividerPositions(.7);
 

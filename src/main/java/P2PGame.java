@@ -485,6 +485,16 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 updatePeerAlive(peer);
                 logger.serverLog("Player [" + playerId + "] is making a move");
 
+                if (gameState.getRunningState() == RunningState.GAME_ENDED) {
+                    return IReply.MoveReply.createIllegal(gameState);
+                }
+
+
+                // check and update game state
+                Move move = new Move(direction, playerId);
+                boolean illegalMove = gameState.processMove(move, player);
+
+                // check for game ending
                 boolean gameEnded = true;
                 for (Treasure oneTreasure : gameState.getTreasureList()) {
                     if (oneTreasure.getAssignedPlayerId() == null) {
@@ -493,14 +503,9 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 }
 
                 if (gameEnded) {
+                    logger.serverLog("Game Over");
                     gameState.setRunningState(RunningState.GAME_ENDED);
-                    return IReply.MoveReply.createIllegal(gameState);
                 }
-
-
-                // check and update game state
-                Move move = new Move(direction, playerId);
-                boolean illegalMove = gameState.processMove(move, player);
 
                 if (!updateBackup()) {
                     // failed to update to backup
@@ -693,7 +698,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     if (gameState.getPlayerList().isEmpty()) {
                         player.setId(bootstrappingPlayerId);
                         player.setRole(PeerRole.PRIMARY_SERVER);
-                    }else{
+                    } else {
                         player.setId(getNextPlayerId());
                     }
 
