@@ -44,6 +44,10 @@ public class GameState implements Serializable {
         this.runningState = runningState;
     }
 
+    public boolean isActive() {
+        return this.runningState == RunningState.GAME_STARTED;
+    }
+
     /**
      * Initialize the game board by creating treasures and placing the players randomly on the
      * game board.

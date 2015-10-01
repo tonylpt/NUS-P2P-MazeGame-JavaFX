@@ -295,6 +295,13 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 @Override
                 public void run() {
                     doPulseCheck();
+
+                    // check for game end
+                    if (!gameState.isActive()) {
+                        // game is terminated, stop pinging
+                        timer.cancel();
+                        timer.purge();
+                    }
                 }
             };
 
@@ -329,18 +336,16 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         }
 
         private void processPingReply(IReply.PingReply reply) {
+            setGameState(reply.getGameState());
+
             switch (reply.getPromotionStatus()) {
                 case PROMOTED_TO_PRIMARY: {
-                    setGameState(reply.getGameState());
-
                     logger.clientLog("Promoted to Primary Server");
                     primaryServer = new InheritingPrimaryServer(reply.getGameState(), reply.getServerSecrets());
                     primaryServer.start();
                     break;
                 }
                 case PROMOTED_TO_BACKUP: {
-                    setGameState(reply.getGameState());
-
                     logger.clientLog("Promoted to Backup Server");
                     backupServer = new ActiveBackupServer(reply.getGameState(), reply.getServerSecrets());
                     break;
@@ -420,6 +425,18 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 }
             }
         }
+
+        protected int getAliveCount() {
+            int aliveCount = 0;
+            for (Player player : gameState.getPlayerList()) {
+                if (player.isAlive()) {
+                    ++aliveCount;
+                }
+            }
+
+            return aliveCount;
+        }
+
     }
 
     /**
@@ -541,6 +558,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 } catch (RemoteException e) {
                     // backup died
                     setDead(gameState.getServerConfig().getBackupPlayerId());
+                    checkIfLastPlayer();
                     logger.serverLog("Backup Server cannot be reached");
                     promoteNewBackupServer = true;
                     return false;
@@ -574,17 +592,29 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 if (silentPeriod > 2 * PING_INTERVAL) {
                     if (isSelf(player.getId())) {
                         // peer is primary server. ignoring.
-                    } else if (peer.equals(gameState.getServerConfig().getBackupServer())) {
+                    } else if (player.getId().equals(gameState.getServerConfig().getBackupPlayerId())) {
                         logger.serverLog("Backup Server seems dormant. Retrying.");
                         if (!updateBackup()) {
                             setDead(player.getId());
+                            checkIfLastPlayer();
                         }
                     } else {
                         setDead(player.getId());
+                        checkIfLastPlayer();
                         logger.serverLog("Player [" + player.getId() + "] seems dormant.");
                     }
                 }
             });
+        }
+
+        private void checkIfLastPlayer() {
+            int count = getAliveCount();
+            if (count <= 1) {
+                logger.serverLog("Game ending because there is no more player");
+                synchronized (gameStateLock) {
+                    gameState.setRunningState(RunningState.GAME_ENDED);
+                }
+            }
         }
 
         /**
@@ -865,6 +895,10 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                                                         String authCode,
                                                         IPeer deadPrimary) {
 
+            if (!gameState.isActive()) {
+                return IReply.PingReply.createUpdate(gameState);
+            }
+
             Player player = authenticatePlayer(peer, playerId, authCode);
             if (player == null) {
                 logger.serverLog("Receive PrimaryDied notification from invalid peer, ID : " + playerId);
@@ -880,6 +914,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                             primaryServer.callPrimaryPing(self, gameClient.getPlayerId(), gameClient.getAuthCode());
                         } catch (RemoteException e) {
                             setDead(gameState.getServerConfig().getPrimaryPlayerId());
+                            checkIfLastPlayer();
                             if (!isSelf(playerId)) {
                                 player.setAlive(true);
                                 player.setRole(PeerRole.PRIMARY_SERVER);
@@ -894,6 +929,16 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
             }
 
             return IReply.PingReply.createUpdate(gameState);
+        }
+
+        private void checkIfLastPlayer() {
+            int count = getAliveCount();
+            if (count <= 1) {
+                logger.serverLog("Game ending because there is no more player");
+                synchronized (gameStateLock) {
+                    gameState.setRunningState(RunningState.GAME_ENDED);
+                }
+            }
         }
     }
 
