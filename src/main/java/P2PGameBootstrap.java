@@ -29,7 +29,7 @@ public class P2PGameBootstrap extends Application {
         String primaryParam = params.get("primary");
         String connectParam = params.get("connect");
 
-        if (!(primaryParam != null ^ connectParam != null)) {
+        if (primaryParam != null && connectParam != null) {
             System.out.println("Please specify either one of --primary or --connect");
             System.exit(0);
             return;
@@ -47,13 +47,13 @@ public class P2PGameBootstrap extends Application {
 
             GameParams.PrimaryParams param = GameParams.PrimaryParams.parse(primaryParam);
             GameUI.start(primaryStage, param);
-        }
-
-        if (connectParam != null) {
+        } else if (connectParam != null) {
             // Start as a normal (non-server) peer
             // Process the normal params
             GameParams.NonPrimaryParams param = GameParams.NonPrimaryParams.parse(connectParam);
             GameUI.start(primaryStage, param);
+        } else {
+            GameUI.start(primaryStage, null);
         }
     }
 }

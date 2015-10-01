@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class P2PGame extends UnicastRemoteObject implements IPeer {
 
-    public static final long PING_INTERVAL = 5000;
+    public static final long PING_INTERVAL = 3000;
 
     public static final String NAME_PEER = "FRIENDLY_PEER";
 
@@ -38,14 +38,13 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
         return thread;
     });
 
-    public P2PGame(GameParams params, ILogger logger, GameUI.UIController uiController) throws RemoteException {
+    public P2PGame(ILogger logger, GameUI.UIController uiController) throws RemoteException {
         this.self = this;
         this.logger = logger;
         this.uiController = uiController;
-        start(params);
     }
 
-    private void start(GameParams params) {
+    public void start(GameParams params) {
         if (params instanceof GameParams.PrimaryParams) {
             GameParams.PrimaryParams primaryParams = (GameParams.PrimaryParams) params;
             exec.execute(() -> {
@@ -53,7 +52,9 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                     GameParams.HostPort hostPort = params.getHostPort();
                     P2PGame.this.rmiServer = createServer(this, true, hostPort.getPort(), logger);
                     P2PGame.this.primaryServer = new BootstrappingPrimaryServer(
-                            primaryParams.getBoardSize(), primaryParams.getTreasureCount()
+                            primaryParams.getBoardSize(),
+                            primaryParams.getTreasureCount(),
+                            primaryParams.getInitialWaitSeconds()
                     );
                     P2PGame.this.primaryServer.start();
                     P2PGame.this.gameClient.connectToPrimary(hostPort.getHost(), hostPort.getPort());
@@ -679,15 +680,18 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
         private final int treasureCount;
 
+        private final int initialWaitSeconds;
+
         private String bootstrappingPlayerId;
 
         /**
          * Creating the server, supplying the board size and treasure count from command-line arguments.
          */
-        public BootstrappingPrimaryServer(int boardSize, int treasureCount) {
+        public BootstrappingPrimaryServer(int boardSize, int treasureCount, int initialWaitSeconds) {
             this.gameState = new GameState(boardSize);
             this.serverSecrets = new ServerSecrets();
             this.treasureCount = treasureCount;
+            this.initialWaitSeconds = initialWaitSeconds;
         }
 
         public void start() {
@@ -713,9 +717,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
                 }
             };
 
-            Calendar c = Calendar.getInstance();
-            c.add(Calendar.SECOND, 20);
-            timer.schedule(task, c.getTime());
+            timer.schedule(task, initialWaitSeconds * 1000);
         }
 
         @Override

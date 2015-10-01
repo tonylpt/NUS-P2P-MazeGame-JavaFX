@@ -26,10 +26,24 @@ public abstract class GameParams {
 
         private final int treasureCount;
 
-        public PrimaryParams(HostPort hostPort, int boardSize, int treasureCount) {
+        private final int initialWaitSeconds;
+
+        public PrimaryParams(HostPort hostPort,
+                             int boardSize,
+                             int treasureCount,
+                             int initialWaitSeconds) {
+
             super(hostPort);
             this.boardSize = boardSize;
             this.treasureCount = treasureCount;
+            this.initialWaitSeconds = initialWaitSeconds;
+        }
+
+        public PrimaryParams(HostPort hostPort,
+                             int boardSize,
+                             int treasureCount) {
+
+            this(hostPort, boardSize, treasureCount, 20);
         }
 
         /**
@@ -46,6 +60,10 @@ public abstract class GameParams {
 
         public int getTreasureCount() {
             return treasureCount;
+        }
+
+        public int getInitialWaitSeconds() {
+            return initialWaitSeconds;
         }
 
         public static PrimaryParams parse(String param) {

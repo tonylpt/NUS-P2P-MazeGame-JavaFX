@@ -6,7 +6,9 @@ import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.event.Event;
 import javafx.event.EventHandler;
+import javafx.event.EventType;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
@@ -30,7 +32,6 @@ import javafx.util.Duration;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.rmi.RemoteException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -44,19 +45,11 @@ import java.util.Map;
 public class GameUI {
 
     /**
-     * Start the game as a primary server.
+     * Start the game from the command-line parameters. If the passed-in param is null,
+     * the game will prompt the user to input the values.
      */
-    public static void start(Stage stage, GameParams.PrimaryParams params) throws Exception {
-        GameUI game = new GameUI(params);
-        game.startGame(stage);
-    }
-
-    /**
-     * Start the game as a normal (non-primary) player.
-     */
-    public static void start(Stage stage, GameParams.NonPrimaryParams params) throws Exception {
-        GameUI game = new GameUI(params);
-        game.startGame(stage);
+    public static void start(Stage primaryStage, GameParams param) throws Exception {
+        new GameUI().startGame(primaryStage, param);
     }
 
     private final UIController uiController;
@@ -65,12 +58,12 @@ public class GameUI {
 
     private final UILogger logger;
 
-    private GameUI(GameParams params) throws RemoteException {
+    private GameUI() throws Exception {
         this.logger = new UILogger();
 
         // trying to bootstrap the game class
         this.uiController = new UIController();
-        this.game = new P2PGame(params, logger, uiController);
+        this.game = new P2PGame(logger, uiController);
         this.uiController.setGame(game);
         this.logger.setExtraOutput(uiController);
     }
@@ -78,7 +71,7 @@ public class GameUI {
     /**
      * Shows the UI on the screen.
      */
-    public void startGame(Stage stage) {
+    public void startGame(Stage stage, GameParams params) {
         Scene scene = new Scene(uiController.getGameView(), 1000, 800);
         scene.setOnKeyReleased(uiController::handleKeyReleased);
         stage.setScene(scene);
@@ -93,6 +86,8 @@ public class GameUI {
         );
 
         stage.show();
+
+        uiController.startGame(params);
     }
 
     /**
@@ -266,6 +261,13 @@ public class GameUI {
 
         public void onGameStateUpdated(GameState gameState) {
             getGameModel().updateGameState(gameState);
+        }
+
+        public void startGame(GameParams params) {
+            if (params != null) {
+                gameView.hideInputScreen();
+                game.start(params);
+            }
         }
     }
 
@@ -598,6 +600,8 @@ public class GameUI {
 
         private final DirectionButton downButton = new DirectionButton("down");
 
+        private final ParamInputScreen paramInputScreen;
+
         private final MazeBoard mazeBoard;
 
         private final UIController uiController;
@@ -605,6 +609,9 @@ public class GameUI {
         public GameView(UIController uiController) {
             this.uiController = uiController;
             this.mazeBoard = new MazeBoard(this);
+
+            // for user input if no input was given in the command line
+            this.paramInputScreen = new ParamInputScreen(e -> uiController.startGame(e.getParams()));
             this.initUI();
         }
 
@@ -667,7 +674,7 @@ public class GameUI {
             splitter2.setOrientation(Orientation.VERTICAL);
             splitter2.setDividerPositions(.7);
 
-            getChildren().add(splitter2);
+            getChildren().addAll(splitter2, paramInputScreen);
         }
 
         /**
@@ -810,6 +817,191 @@ public class GameUI {
 
         private void deselectPlayerList() {
             playerList.getSelectionModel().clearSelection();
+        }
+
+        public void hideInputScreen() {
+            paramInputScreen.setVisible(false);
+        }
+    }
+
+    /**
+     * For getting user input if there is no command line param
+     */
+    private static class ParamInputScreen extends FlowPane {
+
+        private IntTextField listenPortText = new IntTextField(0, Short.MAX_VALUE, 1234);
+
+        private IntTextField boardSizeText = new IntTextField(5, 20, 10);
+
+        private IntTextField treasureCountText = new IntTextField(5, 50, 10);
+
+        private IntTextField waitSecondsText = new IntTextField(5, 60, 20);
+
+        private TextField connectHostText = new TextField("localhost");
+
+        private IntTextField connectPortText = new IntTextField(0, Short.MAX_VALUE, 1234);
+
+        public ParamInputScreen(EventHandler<PeerStartEvent> gameStartHandler) {
+
+            this.setAlignment(Pos.CENTER);
+            this.setOrientation(Orientation.HORIZONTAL);
+            this.setHgap(50);
+            this.setStyle("-fx-background-color: slategray");
+
+            Button startAsPrimary = new Button("Start");
+            startAsPrimary.setStyle("-fx-base: lightsalmon;");
+            startAsPrimary.setOnAction(e -> {
+                GameParams.HostPort hostPort = new GameParams.HostPort("0.0.0.0", listenPortText.getValue());
+                GameParams.PrimaryParams params = new GameParams.PrimaryParams(
+                        hostPort,
+                        boardSizeText.getValue(),
+                        treasureCountText.getValue(),
+                        waitSecondsText.getValue()
+                );
+                gameStartHandler.handle(new PeerStartEvent(params));
+            });
+
+            VBox box = new VBox(
+                    new Label("Listen Port:"),
+                    listenPortText,
+                    new Label("Board Size (5-20):"),
+                    boardSizeText,
+                    new Label("Number of Treasures (5-50):"),
+                    treasureCountText,
+                    new Label("Seconds Before Start (5-60):"),
+                    waitSecondsText,
+                    startAsPrimary
+            );
+
+            box.setSpacing(5);
+            box.setFillWidth(true);
+            box.setAlignment(Pos.CENTER_LEFT);
+            VBox.setMargin(listenPortText, new Insets(0, 0, 10, 0));
+            VBox.setMargin(boardSizeText, new Insets(0, 0, 10, 0));
+            VBox.setMargin(treasureCountText, new Insets(0, 0, 10, 0));
+            VBox.setMargin(waitSecondsText, new Insets(0, 0, 10, 0));
+            VBox.setMargin(startAsPrimary, new Insets(5, 0, 5, 0));
+            listenPortText.setMaxWidth(Double.MAX_VALUE);
+            boardSizeText.setMaxWidth(Double.MAX_VALUE);
+            treasureCountText.setMaxWidth(Double.MAX_VALUE);
+            waitSecondsText.setMaxWidth(Double.MAX_VALUE);
+            startAsPrimary.setMaxWidth(Double.MAX_VALUE);
+
+            TitledPane primaryPane = new TitledPane("Start as Primary", box);
+            primaryPane.setCollapsible(false);
+
+            Button startAsNormal = new Button("Connect");
+            startAsNormal.setStyle("-fx-base: lightsalmon;");
+            startAsNormal.setOnAction(e -> {
+                GameParams.HostPort hostPort = new GameParams.HostPort(connectHostText.getText(), connectPortText.getValue());
+                GameParams.NonPrimaryParams params = new GameParams.NonPrimaryParams(hostPort);
+                gameStartHandler.handle(new PeerStartEvent(params));
+            });
+
+            VBox box2 = new VBox(
+                    new Label("Primary Host:"),
+                    connectHostText,
+                    new Label("Primary Port:"),
+                    connectPortText,
+                    startAsNormal
+            );
+
+            box2.setSpacing(5);
+            box2.setFillWidth(true);
+            box2.setAlignment(Pos.CENTER_LEFT);
+            VBox.setMargin(connectHostText, new Insets(0, 0, 10, 0));
+            VBox.setMargin(connectPortText, new Insets(0, 0, 10, 0));
+            VBox.setMargin(startAsNormal, new Insets(5, 0, 5, 0));
+            connectHostText.setMaxWidth(Double.MAX_VALUE);
+            connectPortText.setMaxWidth(Double.MAX_VALUE);
+            startAsNormal.setMaxWidth(Double.MAX_VALUE);
+
+            TitledPane normalPane = new TitledPane("Connect to Primary", box2);
+            normalPane.setCollapsible(false);
+
+
+            getChildren().addAll(primaryPane, normalPane);
+        }
+
+
+        public class PeerStartEvent extends Event {
+
+            private final GameParams params;
+
+            public PeerStartEvent(GameParams params) {
+                super(new EventType<PeerStartEvent>("PEER_START"));
+                this.params = params;
+            }
+
+            public GameParams getParams() {
+                return params;
+            }
+        }
+
+        private static class IntTextField extends TextField {
+
+            private final int minValue;
+
+            private final int maxValue;
+
+            public IntTextField(int minValue, int maxValue, int initialValue) {
+                if (minValue >= maxValue || initialValue < minValue || initialValue > maxValue) {
+                    throw new IllegalArgumentException("Invalid arguments");
+                }
+
+                this.minValue = minValue;
+                this.maxValue = maxValue;
+                this.setText(String.valueOf(initialValue));
+
+                textProperty().addListener((ov, oldValue, newValue) -> {
+                    if (newValue == null || newValue.isEmpty()) {
+                        return;
+                    }
+
+                    try {
+                        Integer.parseInt(newValue);
+                    } catch (NumberFormatException e) {
+                        setText(oldValue);
+                    }
+                });
+
+                focusedProperty().addListener(new ChangeListener<Boolean>() {
+                    private String lastValue;
+
+                    @Override
+                    public void changed(ObservableValue<? extends Boolean> observable,
+                                        Boolean oldValue,
+                                        Boolean newValue) {
+                        if (newValue) {
+                            // got focus
+                            lastValue = getText();
+                        } else {
+                            // lost focus
+                            try {
+                                int iVal = Integer.parseInt(getText());
+                                if (iVal < minValue || iVal > maxValue) {
+                                    throw new NumberFormatException();
+                                }
+                            } catch (NumberFormatException e) {
+                                setText(lastValue);
+                            }
+                        }
+                    }
+                });
+            }
+
+            public int getValue() throws IllegalArgumentException {
+                try {
+                    int value = Integer.parseInt(getText());
+                    if (value < minValue || value > maxValue) {
+                        throw new IllegalArgumentException("Value is not within range");
+                    }
+                    return value;
+                } catch (IllegalArgumentException e) {
+                    this.requestFocus();
+                    throw e;
+                }
+            }
         }
     }
 
