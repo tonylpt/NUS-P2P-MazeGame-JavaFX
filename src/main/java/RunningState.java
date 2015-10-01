@@ -1,6 +1,4 @@
-/**
- * @author lpthanh
- */
+
 public enum RunningState {
 
     /**

@@ -1,8 +1,6 @@
 import java.io.Serializable;
 
-/**
- * @author lpthanh
- */
+
 public class Treasure implements Serializable {
 
     private String treasureId;

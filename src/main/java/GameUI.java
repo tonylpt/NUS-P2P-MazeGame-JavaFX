@@ -82,7 +82,16 @@ public class GameUI {
         Scene scene = new Scene(uiController.getGameView(), 1000, 800);
         scene.setOnKeyReleased(uiController::handleKeyReleased);
         stage.setScene(scene);
-        stage.setTitle("CS5223 - Maze Game");
+
+        // bind the player ID to window title
+        StringProperty playerName = uiController.getGameModel().playerName;
+        stage.titleProperty().bind(
+                Bindings.concat("CS5223 - Maze Game",
+                        Bindings.when(playerName.isEmpty())
+                                .then("")
+                                .otherwise(Bindings.concat(" [", playerName, "]")))
+        );
+
         stage.show();
     }
 
@@ -276,6 +285,8 @@ public class GameUI {
 
         public final ObjectProperty<RunningState> runningState = new SimpleObjectProperty<>(RunningState.ACCEPTING_PLAYERS);
 
+        public final StringProperty playerName = new SimpleStringProperty();
+
         public final BooleanProperty gameStarted = new SimpleBooleanProperty(this, "gameStarted", false);
 
         public final IntegerProperty boardSize = new SimpleIntegerProperty(this, "boardSize", 0);
@@ -320,6 +331,7 @@ public class GameUI {
                         // updating the role
                         if (uiController.game.isSelf(player.getId())) {
                             role.set(player.getRole());
+                            playerName.set(player.getId());
                         }
 
                     } else {

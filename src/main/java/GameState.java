@@ -3,9 +3,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-/**
- * @author lpthanh
- */
+
 public class GameState implements Serializable {
 
     private final ServerConfig serverConfig = new ServerConfig();

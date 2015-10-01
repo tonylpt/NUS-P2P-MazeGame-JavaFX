@@ -1,9 +1,7 @@
 import java.rmi.Remote;
 import java.rmi.RemoteException;
 
-/**
- * @author lpthanh
- */
+
 public interface IPeer extends Remote {
 
     /*============== CLIENT METHODS =================*/

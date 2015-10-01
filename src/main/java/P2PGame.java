@@ -11,9 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * @author lpthanh
- */
+
 public class P2PGame extends UnicastRemoteObject implements IPeer {
 
     public static final long PING_INTERVAL = 2000;
@@ -626,6 +624,7 @@ public class P2PGame extends UnicastRemoteObject implements IPeer {
 
             boolean promoted = promotePeerAsBackupIfNeeded(playerId, peer);
             if (promoted) {
+                player.setRole(PeerRole.BACKUP_SERVER);
                 logger.serverLog("Promoting [" + playerId + "] as Backup Server");
                 return IReply.PingReply.createPromoteToBackup(gameState, serverSecrets);
             } else {

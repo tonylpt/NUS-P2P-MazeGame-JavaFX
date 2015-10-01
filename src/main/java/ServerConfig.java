@@ -1,8 +1,6 @@
 import java.io.Serializable;
 
-/**
- * @author lpthanh
- */
+
 public class ServerConfig implements Serializable {
 
     private IPeer primaryServer;
