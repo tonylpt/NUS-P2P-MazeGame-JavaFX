@@ -24,6 +24,7 @@
     </dependencies>
 
     <build>
+        <finalName>MazeGame</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -31,6 +32,24 @@
                 <configuration>
                     <source>1.8</source>
                     <target>1.8</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <!-- Run 'mvn exec:java' to run the main class -->
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>1.4.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <executable>java</executable>
+                    <mainClass>P2PGameBootstrap</mainClass>
+                    <commandlineArgs>-Xmx512m</commandlineArgs>
                 </configuration>
             </plugin>
             <plugin>

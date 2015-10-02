@@ -72,9 +72,11 @@ public class GameUI {
      * Shows the UI on the screen.
      */
     public void startGame(Stage stage, GameParams params) {
+        DockUtils.setIcon("icon.png");
         Scene scene = new Scene(uiController.getGameView(), 1000, 800);
         scene.setOnKeyReleased(uiController::handleKeyReleased);
         stage.setScene(scene);
+        stage.getIcons().add(new Image("icon.png"));
 
         // bind the player ID to window title
         StringProperty playerName = uiController.getGameModel().playerName;
@@ -88,6 +90,13 @@ public class GameUI {
         stage.show();
 
         uiController.startGame(params);
+    }
+
+    /**
+     * Attempt to draw a small string over the app icon on Mac OSX Dock
+     */
+    private static void setAppBadge(String badge) {
+        DockUtils.setBadge(badge);
     }
 
     /**
@@ -333,7 +342,10 @@ public class GameUI {
                         // updating the role
                         if (uiController.game.isSelf(player.getId())) {
                             role.set(player.getRole());
-                            playerName.set(player.getId());
+
+                            String playerId = player.getId();
+                            playerName.set(playerId);
+                            setAppBadge(playerId);
                         }
 
                     } else {
@@ -1402,4 +1414,32 @@ public class GameUI {
             }
         }
     }
+
+    /**
+     * A helper class to set the icon and badge on Mac OSX's Dock
+     */
+    private static class DockUtils {
+
+        public static void setIcon(String imageUrl) {
+            try {
+                java.awt.Image icon = new javax.swing.ImageIcon(GameUI.class.getResource(imageUrl)).getImage();
+                Class<?> macAppClazz = Class.forName("com.apple.eawt.Application");
+                Object macApp = macAppClazz.getDeclaredMethod("getApplication").invoke(null);
+                macAppClazz.getMethod("setDockIconImage", java.awt.Image.class).invoke(macApp, icon);
+            } catch (Exception e) {
+                // ignore this exception
+            }
+        }
+
+        public static void setBadge(String badge) {
+            try {
+                Class<?> macAppClazz = Class.forName("com.apple.eawt.Application");
+                Object macApp = macAppClazz.getDeclaredMethod("getApplication").invoke(null);
+                macAppClazz.getDeclaredMethod("setDockIconBadge", String.class).invoke(macApp, badge);
+            } catch (Exception e) {
+                // ignore this exception
+            }
+        }
+    }
+
 }
