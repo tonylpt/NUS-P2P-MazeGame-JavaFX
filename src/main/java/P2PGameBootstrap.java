@@ -12,11 +12,10 @@ public class P2PGameBootstrap extends Application {
 
     /**
      * The game can be started with one of the following commands:
-     * java P2PGame -primary=1234,10,10
-     * java P2PGame -primary=localhost:1234,10,10
-     * java P2PGame -connect=1234
-     * // java P2PGame -connect=localhost:1234
-     * // java P2PGame -connect=173.333.333.333:1234
+     * java P2PGame --primary=1234,10,10
+     * java P2PGame --connect=1234
+     * java P2PGame -connect=localhost:1234
+     * java P2PGame -connect=173.333.333.333:1234
      */
     public static void main(String[] args) {
         launch(args);
