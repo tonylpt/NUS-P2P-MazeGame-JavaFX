@@ -30,6 +30,7 @@ public class P2PGameBootstrap extends Application {
 
         if (primaryParam != null && connectParam != null) {
             System.out.println("Please specify either one of --primary or --connect");
+            Platform.exit();
             System.exit(0);
             return;
         }
