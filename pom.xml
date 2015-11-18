@@ -35,7 +35,7 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- Run 'mvn exec:java' to run the main class -->
+                <!-- Run 'mvn exec:java' to run the main class (after 'mvn compile') -->
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>1.4.0</version>
