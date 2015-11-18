@@ -647,7 +647,8 @@ public class GameUI {
             serverLogPane.setExpanded(true);
             serverLogPane.setContent(createServerLogPanel(gameModel.serverLog));
 
-            SplitPane logPanels = new SplitPane(playerLogPane, serverLogPane);
+            SplitPane logPanels = new SplitPane();
+            logPanels.getItems().addAll(playerLogPane, serverLogPane);
             logPanels.setOrientation(Orientation.HORIZONTAL);
             logPanels.setDividerPositions(.5);
 
@@ -666,7 +667,8 @@ public class GameUI {
             gamePane.setCollapsible(false);
             gamePane.setExpanded(true);
 
-            SplitPane splitter1 = new SplitPane(gamePane, playerListPane);
+            SplitPane splitter1 = new SplitPane();
+            splitter1.getItems().addAll(gamePane, playerListPane);
             splitter1.setOrientation(Orientation.HORIZONTAL);
             splitter1.setDividerPositions(.7);
 
@@ -682,7 +684,8 @@ public class GameUI {
 
             StackPane stackPane = new StackPane(splitter1, colorLabel);
 
-            SplitPane splitter2 = new SplitPane(stackPane, logPanels);
+            SplitPane splitter2 = new SplitPane();
+            splitter2.getItems().addAll(stackPane, logPanels);
             splitter2.setOrientation(Orientation.VERTICAL);
             splitter2.setDividerPositions(.7);
 
