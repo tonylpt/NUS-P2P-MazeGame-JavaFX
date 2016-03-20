@@ -11,7 +11,7 @@ The game is initiated with the first peer acting as the Primary server. Other pe
 ### Communication
 We build the network communication of the project on Java RMI, as recommended by the instructor. It could have been built on any other RPC framework, but RMI is mature and simple enough to be selected for this project. Besides, the objective of the assignment is not about the framework as much as the high-level concepts for building a p2p distributed application.
 
-## Game UI
+### Game UI
 We chose to implement the game UI based on JavaFX, because we were fascinated by the new power, productivity, and the freshness that JavaFX brings into the arsenal for building Desktop UI with Java.
 
 
