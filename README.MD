@@ -19,6 +19,24 @@ We chose to implement the game UI based on JavaFX, because we were fascinated by
 As per requirements of the project, the game implementation is meant to be of a semi peer-to-peer nature. At any one time, there is a Primary server that maintains and updates the game state from the input by each player. The Primary server is prone to compromise and the game state can be manipulated by a malicious user. This vulnerability can be mitigated by having each peer verify the global game state using a consensus mechanism.
 
 
+## Run the code
+
+Compile the source code:
+```
+mvn compile
+```
+
+Launch a new instance:
+```
+mvn exec:java
+```
+
+Build an installable package using JavaFX's packaging tool:
+```
+mvn jfx:native
+```
+
+
 ## Team Members
 * Tony Luong (lpthanh{at}gmail.com)
 * Chen Chi (chenchi2205{at}gmail.com)
